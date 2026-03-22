@@ -1,0 +1,644 @@
+{
+  "version": 1,
+  "description": "Contrastive completion pairs for T-17. Each group contains a prompt and 2-3 short completions with a known semantic relationship (synonym, antonym, style, or unrelated). Completions are short (1-8 tokens) for clean signal. No model inference needed — all completions are hand-crafted.",
+  "system_message": "Answer concisely and directly. Do not restate the question.",
+  "relationships": {
+    "antonym": "Completions have opposite meanings. The prompt makes one clearly correct; the other is factually wrong but grammatically valid.",
+    "synonym": "Completions mean the same thing using different words/phrasing. Both are valid answers.",
+    "style": "Completions convey the same information but differ in register (formal vs casual, technical vs plain, verbose vs terse).",
+    "unrelated": "Completions are semantically unconnected. Baseline for maximum expected divergence."
+  },
+  "groups": [
+    {
+      "id": 0,
+      "prompt": "Is the Sun a star or a planet?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "The Sun is a star"},
+        {"label": "B", "text": "The Sun is a planet"}
+      ],
+      "expected": "A",
+      "pivot_token": "star/planet"
+    },
+    {
+      "id": 1,
+      "prompt": "Is water at 150°C a liquid or a gas?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "At 150°C, water is a gas"},
+        {"label": "B", "text": "At 150°C, water is a liquid"}
+      ],
+      "expected": "A",
+      "pivot_token": "gas/liquid"
+    },
+    {
+      "id": 2,
+      "prompt": "Does sound travel faster in air or in water?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Sound travels faster in water"},
+        {"label": "B", "text": "Sound travels faster in air"}
+      ],
+      "expected": "A",
+      "pivot_token": "water/air"
+    },
+    {
+      "id": 3,
+      "prompt": "Is the Earth's core hot or cold?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "The Earth's core is extremely hot"},
+        {"label": "B", "text": "The Earth's core is extremely cold"}
+      ],
+      "expected": "A",
+      "pivot_token": "hot/cold"
+    },
+    {
+      "id": 4,
+      "prompt": "Is diamond harder than glass, or softer?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Diamond is harder than glass"},
+        {"label": "B", "text": "Diamond is softer than glass"}
+      ],
+      "expected": "A",
+      "pivot_token": "harder/softer"
+    },
+    {
+      "id": 5,
+      "prompt": "Does the Earth rotate clockwise or counterclockwise when viewed from the North Pole?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "The Earth rotates counterclockwise"},
+        {"label": "B", "text": "The Earth rotates clockwise"}
+      ],
+      "expected": "A",
+      "pivot_token": "counterclockwise/clockwise"
+    },
+    {
+      "id": 6,
+      "prompt": "Is the Pacific Ocean the largest or smallest ocean?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "The Pacific is the largest ocean"},
+        {"label": "B", "text": "The Pacific is the smallest ocean"}
+      ],
+      "expected": "A",
+      "pivot_token": "largest/smallest"
+    },
+    {
+      "id": 7,
+      "prompt": "Is oxygen a metal or a nonmetal?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Oxygen is a nonmetal"},
+        {"label": "B", "text": "Oxygen is a metal"}
+      ],
+      "expected": "A",
+      "pivot_token": "nonmetal/metal"
+    },
+    {
+      "id": 8,
+      "prompt": "Do electrons have a negative or positive charge?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Electrons have a negative charge"},
+        {"label": "B", "text": "Electrons have a positive charge"}
+      ],
+      "expected": "A",
+      "pivot_token": "negative/positive"
+    },
+    {
+      "id": 9,
+      "prompt": "Is absolute zero the highest or lowest possible temperature?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Absolute zero is the lowest possible temperature"},
+        {"label": "B", "text": "Absolute zero is the highest possible temperature"}
+      ],
+      "expected": "A",
+      "pivot_token": "lowest/highest"
+    },
+    {
+      "id": 10,
+      "prompt": "What is the capital of Japan?",
+      "category": "factual",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Tokyo"},
+        {"label": "B", "text": "The capital of Japan is Tokyo"},
+        {"label": "C", "text": "Tokyo is the capital"}
+      ],
+      "expected": null,
+      "pivot_token": "Tokyo (all share same core answer)"
+    },
+    {
+      "id": 11,
+      "prompt": "Describe the speed of a cheetah in one word.",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Fast"},
+        {"label": "B", "text": "Swift"},
+        {"label": "C", "text": "Rapid"}
+      ],
+      "expected": null,
+      "pivot_token": "fast/swift/rapid"
+    },
+    {
+      "id": 12,
+      "prompt": "What happens to ice when you heat it?",
+      "category": "factual",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "It melts"},
+        {"label": "B", "text": "It turns into water"},
+        {"label": "C", "text": "The ice liquefies"}
+      ],
+      "expected": null,
+      "pivot_token": "melts/turns into water/liquefies"
+    },
+    {
+      "id": 13,
+      "prompt": "What word means the opposite of 'happy'?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Sad"},
+        {"label": "B", "text": "Unhappy"},
+        {"label": "C", "text": "Miserable"}
+      ],
+      "expected": null,
+      "pivot_token": "sad/unhappy/miserable"
+    },
+    {
+      "id": 14,
+      "prompt": "What does H2O refer to?",
+      "category": "factual",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Water"},
+        {"label": "B", "text": "H2O is the chemical formula for water"},
+        {"label": "C", "text": "It refers to water"}
+      ],
+      "expected": null,
+      "pivot_token": "water (all share same referent)"
+    },
+    {
+      "id": 15,
+      "prompt": "How would you describe something very large?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Enormous"},
+        {"label": "B", "text": "Huge"},
+        {"label": "C", "text": "Immense"}
+      ],
+      "expected": null,
+      "pivot_token": "enormous/huge/immense"
+    },
+    {
+      "id": 16,
+      "prompt": "What word describes a lack of light?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Dark"},
+        {"label": "B", "text": "Dim"},
+        {"label": "C", "text": "Murky"}
+      ],
+      "expected": null,
+      "pivot_token": "dark/dim/murky"
+    },
+    {
+      "id": 17,
+      "prompt": "What is 2 + 2?",
+      "category": "reasoning",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "4"},
+        {"label": "B", "text": "The answer is 4"},
+        {"label": "C", "text": "2 + 2 = 4"}
+      ],
+      "expected": null,
+      "pivot_token": "4 (all same answer, different framing)"
+    },
+    {
+      "id": 18,
+      "prompt": "What is the boiling point of water?",
+      "category": "factual",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "100 degrees Celsius"},
+        {"label": "B", "text": "212 degrees Fahrenheit"},
+        {"label": "C", "text": "100°C at standard pressure"}
+      ],
+      "expected": null,
+      "pivot_token": "100C/212F (same fact, different units)"
+    },
+    {
+      "id": 19,
+      "prompt": "What is the largest planet in our solar system?",
+      "category": "factual",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Jupiter"},
+        {"label": "B", "text": "The largest planet is Jupiter"},
+        {"label": "C", "text": "Jupiter is the largest"}
+      ],
+      "expected": null,
+      "pivot_token": "Jupiter (all same answer)"
+    },
+    {
+      "id": 20,
+      "prompt": "Explain what gravity is.",
+      "category": "technical",
+      "relationship": "style",
+      "completions": [
+        {"label": "formal", "text": "Gravity is a fundamental force of attraction between objects with mass"},
+        {"label": "casual", "text": "Gravity is basically what keeps you on the ground"},
+        {"label": "technical", "text": "Gravity is the curvature of spacetime caused by mass-energy"}
+      ],
+      "expected": null,
+      "pivot_token": "formal/casual/technical register"
+    },
+    {
+      "id": 21,
+      "prompt": "Why is the sky blue?",
+      "category": "factual",
+      "relationship": "style",
+      "completions": [
+        {"label": "formal", "text": "The sky appears blue due to Rayleigh scattering of sunlight"},
+        {"label": "casual", "text": "Sunlight bounces off air molecules and blue light scatters the most"},
+        {"label": "terse", "text": "Rayleigh scattering"}
+      ],
+      "expected": null,
+      "pivot_token": "same phenomenon, different verbosity"
+    },
+    {
+      "id": 22,
+      "prompt": "What is photosynthesis?",
+      "category": "technical",
+      "relationship": "style",
+      "completions": [
+        {"label": "formal", "text": "Photosynthesis is the biochemical process by which plants convert light energy into chemical energy"},
+        {"label": "casual", "text": "It's how plants make food from sunlight"},
+        {"label": "technical", "text": "6CO2 + 6H2O + light → C6H12O6 + 6O2"}
+      ],
+      "expected": null,
+      "pivot_token": "same concept, different register"
+    },
+    {
+      "id": 23,
+      "prompt": "What does DNA stand for?",
+      "category": "factual",
+      "relationship": "style",
+      "completions": [
+        {"label": "formal", "text": "DNA stands for deoxyribonucleic acid"},
+        {"label": "casual", "text": "Deoxyribonucleic acid"},
+        {"label": "verbose", "text": "DNA is an abbreviation for deoxyribonucleic acid, which is the molecule that carries genetic information"}
+      ],
+      "expected": null,
+      "pivot_token": "same answer, varying elaboration"
+    },
+    {
+      "id": 24,
+      "prompt": "How does a computer store data?",
+      "category": "technical",
+      "relationship": "style",
+      "completions": [
+        {"label": "formal", "text": "Computers store data as binary digits in electronic memory circuits"},
+        {"label": "casual", "text": "Everything gets turned into ones and zeros"},
+        {"label": "technical", "text": "Data is stored as binary states in DRAM capacitors or NAND flash cells"}
+      ],
+      "expected": null,
+      "pivot_token": "same concept, different abstraction levels"
+    },
+    {
+      "id": 25,
+      "prompt": "What is the result of 7 × 8?",
+      "category": "reasoning",
+      "relationship": "style",
+      "completions": [
+        {"label": "terse", "text": "56"},
+        {"label": "verbose", "text": "The product of 7 and 8 is 56"},
+        {"label": "step-by-step", "text": "7 × 8 = 56"}
+      ],
+      "expected": null,
+      "pivot_token": "56 (same answer, different framing)"
+    },
+    {
+      "id": 26,
+      "prompt": "What is the capital of France?",
+      "category": "factual",
+      "relationship": "unrelated",
+      "completions": [
+        {"label": "correct", "text": "Paris"},
+        {"label": "animal", "text": "Elephant"},
+        {"label": "number", "text": "42"}
+      ],
+      "expected": "correct",
+      "pivot_token": "Paris vs completely unrelated tokens"
+    },
+    {
+      "id": 27,
+      "prompt": "What color is the sky on a clear day?",
+      "category": "factual",
+      "relationship": "unrelated",
+      "completions": [
+        {"label": "correct", "text": "Blue"},
+        {"label": "food", "text": "Spaghetti"},
+        {"label": "math", "text": "The integral diverges"}
+      ],
+      "expected": "correct",
+      "pivot_token": "correct answer vs nonsensical completions"
+    },
+    {
+      "id": 28,
+      "prompt": "What is 5 + 3?",
+      "category": "reasoning",
+      "relationship": "unrelated",
+      "completions": [
+        {"label": "correct", "text": "8"},
+        {"label": "color", "text": "Green"},
+        {"label": "place", "text": "Antarctica"}
+      ],
+      "expected": "correct",
+      "pivot_token": "8 vs semantically unrelated"
+    },
+    {
+      "id": 29,
+      "prompt": "What element does 'O' represent on the periodic table?",
+      "category": "factual",
+      "relationship": "unrelated",
+      "completions": [
+        {"label": "correct", "text": "Oxygen"},
+        {"label": "animal", "text": "Penguin"},
+        {"label": "action", "text": "Running quickly"}
+      ],
+      "expected": "correct",
+      "pivot_token": "Oxygen vs completely unrelated"
+    },
+    {
+      "id": 30,
+      "prompt": "Name a mammal.",
+      "category": "factual",
+      "relationship": "unrelated",
+      "completions": [
+        {"label": "correct", "text": "Dog"},
+        {"label": "mineral", "text": "Quartz"},
+        {"label": "abstract", "text": "Democracy"}
+      ],
+      "expected": "correct",
+      "pivot_token": "valid answer vs wrong semantic domain"
+    },
+    {
+      "id": 31,
+      "prompt": "Is light faster than sound, or slower?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Light is faster than sound"},
+        {"label": "B", "text": "Light is slower than sound"}
+      ],
+      "expected": "A",
+      "pivot_token": "faster/slower"
+    },
+    {
+      "id": 32,
+      "prompt": "Is the Sahara Desert wet or dry?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "The Sahara is extremely dry"},
+        {"label": "B", "text": "The Sahara is extremely wet"}
+      ],
+      "expected": "A",
+      "pivot_token": "dry/wet"
+    },
+    {
+      "id": 33,
+      "prompt": "Does ice float or sink in water?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Ice floats in water"},
+        {"label": "B", "text": "Ice sinks in water"}
+      ],
+      "expected": "A",
+      "pivot_token": "floats/sinks"
+    },
+    {
+      "id": 34,
+      "prompt": "Is the Amazon River long or short?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "The Amazon is extremely long"},
+        {"label": "B", "text": "The Amazon is extremely short"}
+      ],
+      "expected": "A",
+      "pivot_token": "long/short"
+    },
+    {
+      "id": 35,
+      "prompt": "Was Einstein's theory of relativity accepted or rejected by the scientific community?",
+      "category": "world_knowledge",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Einstein's theory was accepted"},
+        {"label": "B", "text": "Einstein's theory was rejected"}
+      ],
+      "expected": "A",
+      "pivot_token": "accepted/rejected"
+    },
+    {
+      "id": 36,
+      "prompt": "What word means very small?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Tiny"},
+        {"label": "B", "text": "Minuscule"},
+        {"label": "C", "text": "Miniature"}
+      ],
+      "expected": null,
+      "pivot_token": "tiny/minuscule/miniature"
+    },
+    {
+      "id": 37,
+      "prompt": "What word means to make something better?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Improve"},
+        {"label": "B", "text": "Enhance"},
+        {"label": "C", "text": "Ameliorate"}
+      ],
+      "expected": null,
+      "pivot_token": "improve/enhance/ameliorate"
+    },
+    {
+      "id": 38,
+      "prompt": "What adjective describes someone who is brave?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Courageous"},
+        {"label": "B", "text": "Valiant"},
+        {"label": "C", "text": "Bold"}
+      ],
+      "expected": null,
+      "pivot_token": "courageous/valiant/bold"
+    },
+    {
+      "id": 39,
+      "prompt": "What is another word for 'begin'?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Start"},
+        {"label": "B", "text": "Commence"},
+        {"label": "C", "text": "Initiate"}
+      ],
+      "expected": null,
+      "pivot_token": "start/commence/initiate"
+    },
+    {
+      "id": 40,
+      "prompt": "What is the chemical formula for table salt?",
+      "category": "factual",
+      "relationship": "unrelated",
+      "completions": [
+        {"label": "correct", "text": "NaCl"},
+        {"label": "music", "text": "Beethoven"},
+        {"label": "weather", "text": "Thunderstorm"}
+      ],
+      "expected": "correct",
+      "pivot_token": "NaCl vs unrelated domains"
+    },
+    {
+      "id": 41,
+      "prompt": "Is the North Pole in the Arctic or the Antarctic?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "The North Pole is in the Arctic"},
+        {"label": "B", "text": "The North Pole is in the Antarctic"}
+      ],
+      "expected": "A",
+      "pivot_token": "Arctic/Antarctic"
+    },
+    {
+      "id": 42,
+      "prompt": "Are whales fish or mammals?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Whales are mammals"},
+        {"label": "B", "text": "Whales are fish"}
+      ],
+      "expected": "A",
+      "pivot_token": "mammals/fish"
+    },
+    {
+      "id": 43,
+      "prompt": "Is iron a conductor or an insulator?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Iron is a conductor"},
+        {"label": "B", "text": "Iron is an insulator"}
+      ],
+      "expected": "A",
+      "pivot_token": "conductor/insulator"
+    },
+    {
+      "id": 44,
+      "prompt": "What does 'ancient' mean?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "Very old"},
+        {"label": "B", "text": "Extremely aged"},
+        {"label": "C", "text": "From long ago"}
+      ],
+      "expected": null,
+      "pivot_token": "old/aged/long ago"
+    },
+    {
+      "id": 45,
+      "prompt": "How does rain form?",
+      "category": "factual",
+      "relationship": "style",
+      "completions": [
+        {"label": "formal", "text": "Rain forms when water vapor in the atmosphere condenses into droplets"},
+        {"label": "casual", "text": "Water evaporates, goes up, cools down, and falls back as drops"},
+        {"label": "technical", "text": "Precipitation occurs via nucleation of supersaturated vapor on condensation nuclei"}
+      ],
+      "expected": null,
+      "pivot_token": "same process, different registers"
+    },
+    {
+      "id": 46,
+      "prompt": "What is an atom?",
+      "category": "technical",
+      "relationship": "style",
+      "completions": [
+        {"label": "formal", "text": "An atom is the smallest unit of ordinary matter that constitutes a chemical element"},
+        {"label": "casual", "text": "An atom is the tiniest building block of stuff"},
+        {"label": "technical", "text": "An atom consists of a nucleus of protons and neutrons surrounded by an electron cloud"}
+      ],
+      "expected": null,
+      "pivot_token": "same concept, different abstraction"
+    },
+    {
+      "id": 47,
+      "prompt": "What is the speed of light?",
+      "category": "factual",
+      "relationship": "synonym",
+      "completions": [
+        {"label": "A", "text": "About 300,000 km/s"},
+        {"label": "B", "text": "Approximately 3 × 10^8 m/s"},
+        {"label": "C", "text": "Roughly 186,000 miles per second"}
+      ],
+      "expected": null,
+      "pivot_token": "same value, different units/notation"
+    },
+    {
+      "id": 48,
+      "prompt": "Who wrote Romeo and Juliet?",
+      "category": "world_knowledge",
+      "relationship": "unrelated",
+      "completions": [
+        {"label": "correct", "text": "William Shakespeare"},
+        {"label": "food", "text": "Chocolate cake"},
+        {"label": "tech", "text": "The TCP/IP protocol"}
+      ],
+      "expected": "correct",
+      "pivot_token": "Shakespeare vs completely unrelated"
+    },
+    {
+      "id": 49,
+      "prompt": "Is Venus hotter or cooler than Earth?",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {"label": "A", "text": "Venus is much hotter than Earth"},
+        {"label": "B", "text": "Venus is much cooler than Earth"}
+      ],
+      "expected": "A",
+      "pivot_token": "hotter/cooler"
+    }
+  ]
+}

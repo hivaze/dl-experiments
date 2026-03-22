@@ -1,0 +1,6 @@
+{
+  "model": "Qwen/Qwen3-1.7B",
+  "source": "openai/gsm8k",
+  "num_samples": 64,
+  "max_len": 256
+}

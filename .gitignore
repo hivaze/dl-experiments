@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data & models (large files)
+data/raw/
+data/processed/
+models/checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+*.h5
+
+# Results (top-level only, experiment results are kept)
+/results/
+runs/
+wandb/
+lightning_logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+
+# Claude
+.claude/
