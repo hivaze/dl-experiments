@@ -1,0 +1,116 @@
+{
+  "baseline": {
+    "gsm8k": {
+      "accuracy": 0.895,
+      "correct": 179,
+      "total": 200
+    },
+    "math500": {
+      "accuracy": 0.79,
+      "correct": 158,
+      "total": 200
+    },
+    "calibration": {
+      "perplexity": 3.6589844626493946,
+      "avg_loss": 1.2972
+    }
+  },
+  "configs": {
+    "A": {
+      "config": "A",
+      "description": "Uniform r=16 all layers",
+      "trainable_params": 33030144,
+      "total_params": 4055498240,
+      "train_loss": 1.1732,
+      "train_time_s": 145.0,
+      "gsm8k": {
+        "accuracy": 0.905,
+        "correct": 181,
+        "total": 200
+      },
+      "math500": {
+        "accuracy": 0.78,
+        "correct": 156,
+        "total": 200
+      },
+      "calibration": {
+        "perplexity": 3.5445598104427303,
+        "avg_loss": 1.2654
+      }
+    },
+    "B": {
+      "config": "B",
+      "description": "Phase-aware spectral-guided",
+      "trainable_params": 48498688,
+      "total_params": 4070966784,
+      "train_loss": 1.027,
+      "train_time_s": 148.2,
+      "gsm8k": {
+        "accuracy": 0.91,
+        "correct": 182,
+        "total": 200
+      },
+      "math500": {
+        "accuracy": 0.805,
+        "correct": 161,
+        "total": 200
+      },
+      "calibration": {
+        "perplexity": 3.527353921851215,
+        "avg_loss": 1.2605
+      }
+    },
+    "F": {
+      "config": "F",
+      "description": "Skip bottleneck L15-24",
+      "trainable_params": 23855104,
+      "total_params": 4046323200,
+      "train_loss": 1.3108,
+      "train_time_s": 125.0,
+      "gsm8k": {
+        "accuracy": 0.93,
+        "correct": 186,
+        "total": 200
+      },
+      "math500": {
+        "accuracy": 0.79,
+        "correct": 158,
+        "total": 200
+      },
+      "calibration": {
+        "perplexity": 3.5593561595714394,
+        "avg_loss": 1.2696
+      }
+    },
+    "H": {
+      "config": "H",
+      "description": "Late only L25-35",
+      "trainable_params": 10092544,
+      "total_params": 4032560640,
+      "train_loss": 1.4969,
+      "train_time_s": 72.1,
+      "gsm8k": {
+        "accuracy": 0.91,
+        "correct": 182,
+        "total": 200
+      },
+      "math500": {
+        "accuracy": 0.8,
+        "correct": 160,
+        "total": 200
+      },
+      "calibration": {
+        "perplexity": 3.580070089845047,
+        "avg_loss": 1.2754
+      }
+    }
+  },
+  "total_time_s": 18124.7,
+  "predictions": {
+    "B_beats_A_gsm8k": true,
+    "F_vs_A_gsm8k_gap": -0.025,
+    "F_vs_A_math500_gap": -0.01,
+    "H_vs_A_gsm8k_gap": -0.005,
+    "H_vs_A_math500_gap": -0.02
+  }
+}

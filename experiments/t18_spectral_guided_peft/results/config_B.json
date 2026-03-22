@@ -1,0 +1,22 @@
+{
+  "config": "B",
+  "description": "Phase-aware spectral-guided",
+  "trainable_params": 48498688,
+  "total_params": 4070966784,
+  "train_loss": 1.027,
+  "train_time_s": 148.2,
+  "gsm8k": {
+    "accuracy": 0.91,
+    "correct": 182,
+    "total": 200
+  },
+  "math500": {
+    "accuracy": 0.805,
+    "correct": 161,
+    "total": 200
+  },
+  "calibration": {
+    "perplexity": 3.527353921851215,
+    "avg_loss": 1.2605
+  }
+}

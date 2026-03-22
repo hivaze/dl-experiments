@@ -1,0 +1,84 @@
+{
+  "baseline_ppl": 9.251679420471191,
+  "bf16_memory_mb": 8053.474816,
+  "methods": {
+    "bf16_baseline": {
+      "ppl": 9.251679420471191,
+      "ppl_delta": 0.0,
+      "memory_mb": 8053.474816,
+      "tokens_per_sec": 86.86680214820086,
+      "effective_bits": 16
+    },
+    "rtn_8bit": {
+      "ppl": 9.273334503173828,
+      "ppl_delta": 0.02165508270263672,
+      "compression_ratio": 2.0,
+      "effective_bits": 8,
+      "tokens_per_sec": 86.67506644356705,
+      "time_s": 4.82060432434082
+    },
+    "rtn_4bit": {
+      "ppl": 9.741434097290039,
+      "ppl_delta": 0.48975467681884766,
+      "compression_ratio": 4.0,
+      "effective_bits": 4,
+      "tokens_per_sec": 86.65184701405173,
+      "time_s": 4.820938587188721
+    },
+    "rtn_3bit": {
+      "ppl": 214.69088745117188,
+      "ppl_delta": 205.43920803070068,
+      "compression_ratio": 5.333333333333333,
+      "effective_bits": 3,
+      "tokens_per_sec": 86.70557240235222,
+      "time_s": 4.818756580352783
+    },
+    "bnb_nf4": {
+      "ppl": 9.34520149230957,
+      "ppl_delta": 0.0935220718383789,
+      "memory_mb": 10722.394112,
+      "load_time_s": 3.5116357803344727,
+      "tokens_per_sec": 53.66490068886147,
+      "effective_bits": 4.0
+    },
+    "bnb_int8": {
+      "ppl": 9.298296928405762,
+      "ppl_delta": 0.04661750793457031,
+      "memory_mb": 12473.07776,
+      "load_time_s": 4.987900018692017,
+      "tokens_per_sec": 19.49457497957318,
+      "effective_bits": 8.0
+    },
+    "torchao_int8wo": {
+      "ppl": 9.319103240966797,
+      "ppl_delta": 0.06742382049560547,
+      "memory_mb": 12868.318208,
+      "load_time_s": 1.5098116397857666,
+      "tokens_per_sec": 45.16411360574323,
+      "effective_bits": 8
+    },
+    "torchao_int4wo": {
+      "error": "Requires mslk >= 1.0.0"
+    },
+    "llmcompressor_gptq_w4a16": {
+      "ppl": 9.481980323791504,
+      "ppl_delta": 0.2303009033203125,
+      "memory_mb": 24230.114816,
+      "load_time_s": 327.2892882823944,
+      "tokens_per_sec": 11.750229374104094,
+      "effective_bits": 4
+    },
+    "llmcompressor_gptq_w8a16": {
+      "ppl": 9.270930290222168,
+      "ppl_delta": 0.019250869750976562,
+      "memory_mb": 32280.484864,
+      "load_time_s": 179.21582651138306,
+      "tokens_per_sec": 12.717775671023432,
+      "effective_bits": 8
+    },
+    "llmcompressor_w8a8": {
+      "error": "Expected all tensors to be on the same device, but got target is on cuda:0, different from other tensors on cuda:1 (when checking argument in method wrapper_CUDA_nll_loss_forward)"
+    }
+  },
+  "time_s": 647.4144449234009
+}
