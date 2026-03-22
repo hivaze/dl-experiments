@@ -18,24 +18,24 @@ A transformer with $L$ layers maps an input token sequence to a sequence of hidd
 
 $$h_t^{(\ell)} = h_t^{(0)} + \sum_{i=1}^{\ell} f_i(h_t^{(i-1)})$$
 
-where $h_t^{(0)}$ is the token embedding and $f_i$ is the residual update from layer $i$ (attention + MLP). Given two completions $A$ and $B$ for the same prompt, the hidden states at the **first diverging token position** $t^*$ (the "pivot") follow two trajectories:
+where $h_t^{(0)}$ is the token embedding and $f_i$ is the residual update from layer $i$ (attention + MLP). Given two completions $A$ and $B$ for the same prompt, the hidden states at the **first diverging token position** $t^{*}$ (the "pivot") follow two trajectories:
 
-$$\text{Trajectory A:} \quad h_{t^*}^{(0,A)}, \; h_{t^*}^{(1,A)}, \; \ldots, \; h_{t^*}^{(L,A)}$$
-$$\text{Trajectory B:} \quad h_{t^*}^{(0,B)}, \; h_{t^*}^{(1,B)}, \; \ldots, \; h_{t^*}^{(L,B)}$$
+$$\text{Trajectory A:} \quad h_{t^{*}}^{(0,A)}, \; h_{t^{*}}^{(1,A)}, \; \ldots, \; h_{t^{*}}^{(L,A)}$$
+$$\text{Trajectory B:} \quad h_{t^{*}}^{(0,B)}, \; h_{t^{*}}^{(1,B)}, \; \ldots, \; h_{t^{*}}^{(L,B)}$$
 
-These trajectories start from different embeddings (different token IDs at position $t^*$) but are conditioned on the same context (identical prefix). We measure their relationship at each layer $\ell$ via:
+These trajectories start from different embeddings (different token IDs at position $t^{*}$) but are conditioned on the same context (identical prefix). We measure their relationship at each layer $\ell$ via:
 
 **Cosine similarity** (directional alignment):
-$$\text{cos}(\ell) = \frac{\langle h_{t^*}^{(\ell,A)}, \; h_{t^*}^{(\ell,B)} \rangle}{\|h_{t^*}^{(\ell,A)}\| \cdot \|h_{t^*}^{(\ell,B)}\|}$$
+$$\text{cos}(\ell) = \frac{\langle h_{t^{*}}^{(\ell,A)}, \; h_{t^{*}}^{(\ell,B)} \rangle}{\|h_{t^{*}}^{(\ell,A)}\| \cdot \|h_{t^{*}}^{(\ell,B)}\|}$$
 
 **Normalized L2 distance** (magnitude-sensitive divergence):
-$$d(\ell) = \frac{\|h_{t^*}^{(\ell,A)} - h_{t^*}^{(\ell,B)}\|}{\frac{1}{2}(\|h_{t^*}^{(\ell,A)}\| + \|h_{t^*}^{(\ell,B)}\|)}$$
+$$d(\ell) = \frac{\|h_{t^{*}}^{(\ell,A)} - h_{t^{*}}^{(\ell,B)}\|}{\frac{1}{2}(\|h_{t^{*}}^{(\ell,A)}\| + \|h_{t^{*}}^{(\ell,B)}\|)}$$
 
 ### KL Divergence and the Meaning-vs-Form Decomposition
 
 At each layer, we project the hidden state through the final layer norm $\text{RMSNorm}$ and unembedding matrix $W_U$ to get logits:
 
-$$z^{(\ell)} = W_U \cdot \text{RMSNorm}(h_{t^*}^{(\ell)})$$
+$$z^{(\ell)} = W_U \cdot \text{RMSNorm}(h_{t^{*}}^{(\ell)})$$
 
 The KL divergence between the resulting distributions for completions $A$ and $B$ decomposes into two components:
 
@@ -52,7 +52,7 @@ This predicts a **crossover**: synonyms should have lower KL than antonyms in ea
 
 For completions with multiple tokens, pointwise cosine similarity misses structural patterns. We use **Linear Centered Kernel Alignment** (CKA), which compares the Gram matrices of two representations:
 
-$$\text{CKA}(X, Y) = \frac{\| Y^T X \|_F^2}{\| X^T X \|_F \cdot \| Y^T Y \|_F}$$
+$$\text{CKA}(X, Y) = \frac{\| Y^{T} X \|_F^{2}}{\| X^{T} X \|_F \cdot \| Y^{T} Y \|_F}$$
 
 where $X \in \mathbb{R}^{n \times d}$ and $Y \in \mathbb{R}^{n \times d}$ are the hidden-state matrices (tokens × hidden dim) for completions $A$ and $B$ respectively, after centering. CKA = 1 means the representations encode the same structure; CKA = 0 means they are unrelated.
 

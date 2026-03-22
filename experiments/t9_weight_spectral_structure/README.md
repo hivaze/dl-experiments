@@ -38,13 +38,13 @@ Note: Q has 32 heads but K/V have only 8 (grouped-query attention), so K/V are 4
 
 ### Singular Value Decomposition
 
-For a weight matrix W in R^(m x n) with m >= n, the SVD is:
+For a weight matrix `W ∈ R^(m×n)` with `m >= n`, the SVD is:
 
 ```
 W = U * diag(sigma_1, ..., sigma_n) * V^T
 ```
 
-where U in R^(m x n) has orthonormal columns, V in R^(n x n) is orthogonal, and sigma_1 >= sigma_2 >= ... >= sigma_n >= 0 are the singular values. The singular values characterize the "importance" of each rank-1 component: the best rank-r approximation (in Frobenius norm) is obtained by keeping only the top r singular values (Eckart-Young-Mirsky theorem):
+where `U ∈ R^(m×n)` has orthonormal columns, `V ∈ R^(n×n)` is orthogonal, and `σ_1 >= σ_2 >= ... >= σ_n >= 0` are the singular values. The singular values characterize the "importance" of each rank-1 component: the best rank-r approximation (in Frobenius norm) is obtained by keeping only the top r singular values (Eckart-Young-Mirsky theorem):
 
 ```
 W_r = U_r * diag(sigma_1, ..., sigma_r) * V_r^T
@@ -71,7 +71,7 @@ PR(W) = (sum_i p_i)^2 / sum_i p_i^2 = (sum_i sigma_i^2)^2 / sum_i sigma_i^4
 - If all energy is in one singular value: PR = 1
 - If energy is uniformly distributed across k modes: PR = k
 - PR ranges from 1 to n = min(m, n)
-- PR = exp(2 * H_2) where H_2 = -log(sum p_i^2) is the Renyi entropy of order 2
+- `PR = exp(2 * H_2)` where `H_2 = -log(sum p_i²)` is the Rényi entropy of order 2
 
 The effective rank ratio normalizes by the maximum possible rank:
 
@@ -93,9 +93,9 @@ srank(W) = ||W||_F^2 / ||W||_2^2 = sum_i sigma_i^2 / sigma_1^2
 - More robust to small perturbations in the tail singular values than PR
 - srank measures how "spread out" the energy is relative to the dominant mode, while PR measures how spread out relative to a uniform distribution
 
-**Relationship to PR:** Both measure different aspects of spectral concentration. If the SV distribution follows a power law sigma_i ~ i^(-alpha), then:
-- srank = sum(i^(-2*alpha)) ~ n^(1 - 2*alpha) / (1 - 2*alpha) for alpha < 1/2
-- PR = (sum i^(-2*alpha))^2 / sum i^(-4*alpha). For alpha < 1/4: PR ~ n * (1-4*alpha)/(1-2*alpha)^2 (linear in n). For 1/4 < alpha < 1/2: PR ~ n^(2-4*alpha) * const (sub-linear growth). The two measures have different scaling exponents, with stable rank always <= PR for power-law spectra
+**Relationship to PR:** Both measure different aspects of spectral concentration. If the SV distribution follows a power law `σ_i ~ i^(-α)`, then:
+- `srank = sum(i^(-2α)) ~ n^(1-2α) / (1-2α)` for `α < 1/2`
+- `PR = (sum i^(-2α))² / sum i^(-4α)`. For `α < 1/4`: `PR ~ n * (1-4α)/(1-2α)²` (linear in n). For `1/4 < α < 1/2`: `PR ~ n^(2-4α) * const` (sub-linear growth). The two measures have different scaling exponents, with stable rank always <= PR for power-law spectra
 
 ### Spectral Entropy
 
@@ -139,15 +139,15 @@ The exponent alpha controls compressibility:
 - alpha < 0.5: Hard to compress (slow decay, high effective rank)
 - alpha = 0: Uniform SVs (incompressible, PR = n)
 
-**Connection to random matrix theory:** For a random Gaussian matrix W in R^(m x n), the singular values follow the Marchenko-Pastur distribution (not a power law). The density of squared singular values is:
+**Connection to random matrix theory:** For a random Gaussian matrix `W ∈ R^(m×n)`, the singular values follow the Marchenko-Pastur distribution (not a power law). The density of squared singular values is:
 
 ```
 rho_MP(lambda) = sqrt((lambda_+ - lambda)(lambda - lambda_-)) / (2*pi*gamma*lambda)
 ```
 
-where gamma = n/m, lambda_+/- = (1 +/- sqrt(gamma))^2. Trained networks deviate from MP by developing a few large outlier singular values (learned features) superimposed on a bulk that resembles MP. The power-law exponent quantifies how much the top modes dominate over the bulk.
+where `γ = n/m`, `λ_± = (1 ± √γ)²`. Trained networks deviate from MP by developing a few large outlier singular values (learned features) superimposed on a bulk that resembles MP. The power-law exponent quantifies how much the top modes dominate over the bulk.
 
-**Fit quality (R^2):** Our R^2 values of 0.69-0.77 indicate the power-law is a reasonable but imperfect model. The deviation comes from two sources: (1) the bulk of singular values may follow MP rather than power-law, and (2) outlier singular values distort the fit. A more sophisticated analysis would fit a "spiked covariance" model (MP bulk + discrete spikes), but the simple power-law captures the essential compressibility information.
+**Fit quality (R²):** Our R² values of 0.69-0.77 indicate the power-law is a reasonable but imperfect model. The deviation comes from two sources: (1) the bulk of singular values may follow MP rather than power-law, and (2) outlier singular values distort the fit. A more sophisticated analysis would fit a "spiked covariance" model (MP bulk + discrete spikes), but the simple power-law captures the essential compressibility information.
 
 ### Cumulative Energy
 
@@ -215,7 +215,7 @@ where n_p = 17 (plateau layers), n_l = 19 (late layers), and the degrees of free
 
 ### Per-Matrix Spectral Statistics
 
-| Matrix | Eff Rank Ratio | Power-Law alpha | R^2 | Rank for 90% Energy |
+| Matrix | Eff Rank Ratio | Power-Law alpha | R² | Rank for 90% Energy |
 |--------|---------------|-----------------|-----|---------------------|
 | q_proj | 0.2535 | 0.616 +/- 0.051 | 0.766 | ~1370 |
 | k_proj | 0.3756 | 0.548 +/- 0.058 | 0.751 | ~640 |
@@ -231,7 +231,7 @@ where n_p = 17 (plateau layers), n_l = 19 (late layers), and the degrees of free
 
 ![Power-Law Exponents](results/power_law_exponent_all.png)
 
-All matrices show moderate power-law decay (alpha = 0.3-0.7) with R^2 ~ 0.69-0.77. Two distinct spectral regimes emerge:
+All matrices show moderate power-law decay (alpha = 0.3-0.7) with R² ~ 0.69-0.77. Two distinct spectral regimes emerge:
 
 **Regime A — Steep decay (attention routing, alpha ~ 0.55-0.62):** Q, K, O projections have faster SV decay, concentrating energy in fewer dimensions. These matrices implement relatively simple linear maps (low intrinsic dimensionality). The steeper alpha means the top singular vectors capture a disproportionate share of the computation.
 
@@ -271,6 +271,14 @@ Actual Q eff rank (0.25) is well below the MP prediction for its shape (0.62), i
 - **MLP down_proj dips in layers 13-21**: Effective rank drops from ~1800 to ~1550, then recovers. This corresponds to the weight-norm plateau region.
 - **Layer 1 MLP anomaly**: The entire MLP at layer 1 is degenerate — both down_proj (eff rank 341, ratio 0.13) and gate_proj (eff rank 315, ratio 0.12) are severely compressed, making them the two most compressible matrices in the model. Up_proj is also slightly lower than layer 0. Layers 2-3 show suppressed down_proj rank (700, 1285) with partial recovery. This is consistent with the "residual stream" view: layer 1 makes minimal corrections to the embedding, with its MLP operating in a nearly degenerate regime.
 - **Condition number extremes**: K-projection at layer 5 has κ = 2424 (vs mean ~106), indicating near-singularity and potential numerical fragility. Gate_proj at layer 1 also has elevated κ = 466, consistent with the MLP degeneracy there.
+
+### Spectral Entropy
+
+![Spectral Entropy](results/spectral_entropy_all.png)
+
+### Effective vs Stable Rank
+
+![Effective vs Stable Rank](results/effective_vs_stable_rank.png)
 
 ### Singular Value Spectra
 
@@ -334,7 +342,7 @@ Weight spectral structure does not significantly predict representation geometry
 
 3. **Late layers are spectrally distinct from plateau layers**: Q, K, O, and gate projections all have significantly higher effective rank in layers 17-35 vs 0-16 (p < 0.05 for 4/7 matrices). The gate_proj effect is strongest (+0.17, p < 0.0001). Routing complexity increases with depth while content processing stays constant.
 
-4. **Moderate power-law decay in two regimes**: Attention routing matrices (alpha ~ 0.55-0.62) decay faster than MLP/value matrices (alpha ~ 0.31-0.40). R^2 ~ 0.7 indicates approximate but not perfect power-law behavior — the true distribution is likely MP-bulk + spiked outliers.
+4. **Moderate power-law decay in two regimes**: Attention routing matrices (alpha ~ 0.55-0.62) decay faster than MLP/value matrices (alpha ~ 0.31-0.40). R² ~ 0.7 indicates approximate but not perfect power-law behavior — the true distribution is likely MP-bulk + spiked outliers.
 
 5. **K-projection rank anticorrelates with layer criticality**: Layers with lower K-rank are harder to knock out (r = -0.40, p = 0.016). Constrained routing creates specialized, non-redundant computations.
 

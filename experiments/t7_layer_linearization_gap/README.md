@@ -22,9 +22,9 @@ Each transformer layer applies a nonlinear transformation g(x) = layer(x) - x to
 ### Notation
 
 For transformer layer l, define:
-- **x** in R^(B x T x d): the input hidden states (residual stream), where B=batch, T=seq_len, d=2560
-- **g: R^d -> R^d**: the non-residual transform (what the layer *adds* to the residual stream), applied per-token
-- **J_g(x)** in R^(d x d): the Jacobian dg/dx evaluated at x (per-token)
+- **x** ∈ `R^(B×T×d)`: the input hidden states (residual stream), where B=batch, T=seq_len, d=2560
+- **g**: `R^d → R^d`: the non-residual transform (what the layer *adds* to the residual stream), applied per-token
+- **J_g(x)** ∈ `R^(d×d)`: the Jacobian dg/dx evaluated at x (per-token)
 
 The layer's full operation is x -> x + g(x) (residual connection). The function g decomposes as:
 
@@ -39,19 +39,19 @@ f_mlp(h)  = W_down * (SiLU(W_gate * RMSNorm(h)) * (W_up * RMSNorm(h)))
 ```
 
 The nonlinear components are:
-1. **Softmax** in attention: softmax(QK^T / sqrt(d_k)) — quadratic in Q, K via the bilinear form, then nonlinear via exp
+1. **Softmax** in attention: `softmax(QKᵀ / √d_k)` — quadratic in Q, K via the bilinear form, then nonlinear via exp
 2. **SiLU** (= x * sigmoid(x)) in SwiGLU: smooth, approximately linear near 0, approximately identity for large positive x
-3. **RMSNorm**: x -> x * d^(1/2) / ||x||_2 — projects onto the unit sphere, making g scale-invariant
+3. **RMSNorm**: `x → x * √d / ‖x‖₂` — projects onto the unit sphere, making g scale-invariant
 
-### Frechet Derivative and Linearization
+### Fréchet Derivative and Linearization
 
-The Frechet derivative of g at x is the bounded linear operator Dg(x): R^d -> R^d such that:
+The Fréchet derivative of g at x is the bounded linear operator `Dg(x): R^d → R^d` such that:
 
 ```
 g(x + h) = g(x) + Dg(x)[h] + o(||h||)
 ```
 
-For finite-dimensional g, Dg(x) is represented by the Jacobian matrix J_g(x) in R^(d x d):
+For finite-dimensional g, Dg(x) is represented by the Jacobian matrix `J_g(x) ∈ R^(d×d)`:
 
 ```
 [J_g(x)]_{ij} = dg_i / dx_j
@@ -95,7 +95,7 @@ gap(x, d, eps) = ||r|| / ||Delta|| = ||Delta - Delta_hat|| / ||Delta||
 gap ~ eps * ||H[d,d]|| / (2 * ||J*d||)  (gap is linear in eps for quadratic nonlinearity)
 ```
 
-More generally, if the dominant nonlinearity is degree k (e.g., k=2 for softmax's quadratic form, k=3 for cubic terms), then gap ~ eps^(k-1). The multi-scale analysis fits this power law.
+More generally, if the dominant nonlinearity is degree k (e.g., k=2 for softmax's quadratic form, k=3 for cubic terms), then `gap ~ eps^(k-1)`. The multi-scale analysis fits this power law.
 
 ### Central Difference Approximation
 
@@ -116,7 +116,7 @@ Subtracting:
 [g(x+eps*d) - g(x-eps*d)] / (2*eps) = J*d + (eps^2/6)*T[d,d,d] + O(eps^4)
 ```
 
-The even-order terms (Hessian) cancel exactly, giving **O(eps^2) accuracy** instead of O(eps) for forward differences. This is crucial because:
+The even-order terms (Hessian) cancel exactly, giving **O(eps²) accuracy** instead of O(eps) for forward differences. This is crucial because:
 - bf16 precision has ~7.8e-3 relative error, requiring eps >= 0.01
 - At eps = 0.05, forward differences would have O(0.05) = 5% Jacobian error
 - Central differences have O(0.0025) = 0.25% error — 20x better
@@ -158,7 +158,7 @@ J*x = lim_{eps->0} [g(x + eps*x) - g(x)] / eps = lim_{eps->0} [g((1+eps)x) - g(x
 
 So the homogeneity gap becomes ||g(x) - 0|| / ||g(x)|| = 1. This is not a bug — it reveals that every layer operates on the *angular* (directional) structure of x, not its magnitude.
 
-**Geometric interpretation:** RMSNorm projects the residual stream onto a sphere of radius sqrt(d). Each layer is effectively a map on S^(d-1), the unit sphere in d dimensions. The Jacobian J_g has a null space that includes the radial direction x/||x||, so its rank is at most d-1. This is why the homogeneity gap provides no information about the layer's actual nonlinearity — it's entirely dominated by the geometric constraint of RMSNorm.
+**Geometric interpretation:** RMSNorm projects the residual stream onto a sphere of radius √d. Each layer is effectively a map on `S^(d-1)`, the unit sphere in d dimensions. The Jacobian J_g has a null space that includes the radial direction x/‖x‖, so its rank is at most d-1. This is why the homogeneity gap provides no information about the layer's actual nonlinearity — it's entirely dominated by the geometric constraint of RMSNorm.
 
 ### Multi-Scale Nonlinearity Order
 
@@ -186,7 +186,7 @@ Linear regression of log(gap) vs log(eps) gives slope beta = k-1, so the estimat
 
 RMSNorm's scale-invariance means that for large perturbations, both the "actual" and "linear" responses are pulled toward the same normalized manifold, reducing their relative difference. The effective gap-vs-eps curve bends downward in log-log space at large eps, giving an apparent slope < 1 (order < 2).
 
-Additionally, the R^2 of the log-log fit varies dramatically: early/middle layers have R^2 ~ 0.55-0.78, but late layers degrade sharply — layer 33 has R^2 = 0.19, layer 35 has R^2 = 0.27, and layers 31-32 are at 0.40-0.44. The poor fit for late layers means the single-power-law model is inadequate there — the true gap-vs-eps curve has significant curvature in log-log space, likely due to the transition between different nonlinearity regimes at different scales. **The nonlinearity order metric (0.78-0.84) reported for layers 33-35 should be treated with caution** given these low R^2 values.
+Additionally, the R² of the log-log fit varies dramatically: early/middle layers have R² ~ 0.55-0.78, but late layers degrade sharply — layer 33 has R² = 0.19, layer 35 has R² = 0.27, and layers 31-32 are at 0.40-0.44. The poor fit for late layers means the single-power-law model is inadequate there — the true gap-vs-eps curve has significant curvature in log-log space, likely due to the transition between different nonlinearity regimes at different scales. **The nonlinearity order metric (0.78-0.84) reported for layers 33-35 should be treated with caution** given these low R² values.
 
 ### Spectral Norm via Power Iteration
 
@@ -200,7 +200,7 @@ v_{k+1} = J * v_k / ||J * v_k||      (iterate 5 times)
 
 where each J*v product is estimated via central differences: J*v approx [g(x + eps*||x||*v) - g(x - eps*||x||*v)] / (2*eps*||x||).
 
-Power iteration converges geometrically: after k iterations, the error is O((sigma_2/sigma_1)^k) where sigma_1, sigma_2 are the two largest singular values of J. With 5 iterations and typical sigma_2/sigma_1 ~ 0.5-0.8, the error is ~3-33%.
+Power iteration converges geometrically: after k iterations, the error is `O((σ₂/σ₁)^k)` where σ₁, σ₂ are the two largest singular values of J. With 5 iterations and typical σ₂/σ₁ ~ 0.5-0.8, the error is ~3-33%.
 
 **Interpretation:** ||J_g||_2 is the worst-case amplification factor. If ||J_g||_2 > 1, perturbations can grow through the layer; if < 1, they shrink. The full layer Jacobian is J_layer = I + J_g, so the layer's spectral norm is approximately 1 + ||J_g||_2 (when J_g's top singular vector aligns with the residual). For stable training/inference, we need the product of all layer spectral norms to not explode — which is ensured when most layers have ||J_g||_2 < 1 (contractive).
 
@@ -248,7 +248,7 @@ Note: the MLP sublayer function includes the attention computation (since its in
 
 ### Method 5: Multi-Scale Nonlinearity Order
 
-Perturbation gap computed at eps in {0.01, 0.02, 0.05, 0.1, 0.2} with 8 random directions each. Log-log linear regression of gap vs eps gives the nonlinearity order per layer. R^2 of the fit indicates how well a single power law describes the nonlinearity.
+Perturbation gap computed at eps in {0.01, 0.02, 0.05, 0.1, 0.2} with 8 random directions each. Log-log linear regression of gap vs eps gives the nonlinearity order per layer. R² of the fit indicates how well a single power law describes the nonlinearity.
 
 **Caveat:** At large eps (0.1-0.2), the Taylor expansion may not converge well, and higher-order terms can cause non-monotonic gap behavior (we observe this in layers 0 and 35 where the gap at eps=0.2 exceeds eps=0.1). The fitted "order" should be interpreted as an effective scaling exponent over the tested range, not a true mathematical order of the dominant nonlinearity.
 
@@ -335,7 +335,7 @@ T-9 found a significant negative correlation between weight effective rank and l
 
 3. **Sub-quadratic nonlinearity everywhere**: The multi-scale analysis shows effective nonlinearity orders of 0.6-0.8 rather than the expected 2.0 for softmax/SiLU. This results from (a) RMSNorm dampening scale-dependent nonlinearity, (b) softmax saturation at large perturbations, and (c) the gap ratio measure compressing at large eps. Even the "most nonlinear" layers are less nonlinear than their activation functions would suggest in isolation.
 
-4. **RMSNorm dominates scale sensitivity**: The homogeneity gap (~1.0 for all layers) reveals that RMSNorm makes every layer approximately scale-invariant — the function g(x) depends on the *direction* of x, not its magnitude. Geometrically, each layer operates on the unit sphere S^(d-1) where d = 2560. The Jacobian has a null space containing the radial direction x/||x||.
+4. **RMSNorm dominates scale sensitivity**: The homogeneity gap (~1.0 for all layers) reveals that RMSNorm makes every layer approximately scale-invariant — the function g(x) depends on the *direction* of x, not its magnitude. Geometrically, each layer operates on the unit sphere `S^(d-1)` where d = 2560. The Jacobian has a null space containing the radial direction x/‖x‖.
 
 5. **Layer 0 is qualitatively different**: The only expansive layer (mean amplification 3.4 vs < 1 for all others), with transform magnitude 15x larger, spectral norm 5.4, and the highest nonlinearity. It projects from embedding space to the model's internal representation geometry.
 
@@ -354,7 +354,7 @@ T-9 found a significant negative correlation between weight effective rank and l
 **2. Plateau layer pruning.** Layers 6-18 have the lowest nonlinearity (gap ~0.13), are contractive (mean amplification < 1), and T-2 confirms low knockout criticality. Removing 3-5 layers (e.g., 10-14) cuts ~14% of compute. The near-linear behavior means neighboring layers can partially compensate.
 
 **3. Depth-heterogeneous attention.** The U-shaped profile directly motivates a hybrid architecture:
-- **Plateau (6-18)**: Replace softmax with linear attention (GLA, cosine-similarity). Softmax contributes only ~13-15% of functional complexity here. This eliminates O(T^2) cost for 13/36 layers.
+- **Plateau (6-18)**: Replace softmax with linear attention (GLA, cosine-similarity). Softmax contributes only ~13-15% of functional complexity here. This eliminates O(T²) cost for 13/36 layers.
 - **Edges (0-5, 28-35)**: Keep full softmax. Attention nonlinearity is higher (gap 0.15) and routing is more complex.
 - This matches hybrid approaches like Qwen3.5 (DeltaNet + attention) and Jamba (Mamba + attention), but with layer assignments grounded in measured nonlinearity.
 
