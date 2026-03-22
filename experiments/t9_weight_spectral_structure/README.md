@@ -38,84 +38,67 @@ Note: Q has 32 heads but K/V have only 8 (grouped-query attention), so K/V are 4
 
 ### Singular Value Decomposition
 
-For a weight matrix `W ∈ R^(m×n)` with `m >= n`, the SVD is:
+For a weight matrix $\mathbf{W} \in \mathbb{R}^{m \times n}$ with $m \ge n$, the SVD is:
 
-```
-W = U * diag(sigma_1, ..., sigma_n) * V^T
-```
+$$\mathbf{W} = \mathbf{U} \, \text{diag}(\sigma_1, \ldots, \sigma_n) \, \mathbf{V}^\top$$
 
-where `U ∈ R^(m×n)` has orthonormal columns, `V ∈ R^(n×n)` is orthogonal, and `σ_1 >= σ_2 >= ... >= σ_n >= 0` are the singular values. The singular values characterize the "importance" of each rank-1 component: the best rank-r approximation (in Frobenius norm) is obtained by keeping only the top r singular values (Eckart-Young-Mirsky theorem):
+where $\mathbf{U} \in \mathbb{R}^{m \times n}$ has orthonormal columns, $\mathbf{V} \in \mathbb{R}^{n \times n}$ is orthogonal, and $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n \ge 0$ are the singular values. The singular values characterize the "importance" of each rank-1 component: the best rank-$r$ approximation (in Frobenius norm) is obtained by keeping only the top $r$ singular values (Eckart-Young-Mirsky theorem):
 
-```
-W_r = U_r * diag(sigma_1, ..., sigma_r) * V_r^T
-||W - W_r||_F^2 = sum_{i=r+1}^{n} sigma_i^2
-```
+$$\mathbf{W}_r = \mathbf{U}_r \, \text{diag}(\sigma_1, \ldots, \sigma_r) \, \mathbf{V}_r^\top$$
 
-This is the theoretical foundation for low-rank adaptation (LoRA): if sigma_i decays rapidly, a low-rank approximation captures most of the matrix's action.
+$$\|\mathbf{W} - \mathbf{W}_r\|_F^2 = \sum_{i=r+1}^{n} \sigma_i^2$$
+
+This is the theoretical foundation for low-rank adaptation (LoRA): if $\sigma_i$ decays rapidly, a low-rank approximation captures most of the matrix's action.
 
 ### Effective Rank (Participation Ratio)
 
 The participation ratio measures how many singular values contribute "meaningfully" to the matrix. Define the normalized squared singular value distribution:
 
-```
-p_i = sigma_i^2 / sum_j sigma_j^2
-```
+$$p_i = \frac{\sigma_i^2}{\sum_j \sigma_j^2}$$
 
-This is a probability distribution over the n singular value "modes". The participation ratio is the inverse of the sum of squared probabilities (also known as the inverse Simpson index):
+This is a probability distribution over the $n$ singular value "modes". The participation ratio is the inverse of the sum of squared probabilities (also known as the inverse Simpson index):
 
-```
-PR(W) = (sum_i p_i)^2 / sum_i p_i^2 = (sum_i sigma_i^2)^2 / sum_i sigma_i^4
-```
+$$\text{PR}(\mathbf{W}) = \frac{\left(\sum_i p_i\right)^2}{\sum_i p_i^2} = \frac{\left(\sum_i \sigma_i^2\right)^2}{\sum_i \sigma_i^4}$$
 
 **Properties:**
 - If all energy is in one singular value: PR = 1
-- If energy is uniformly distributed across k modes: PR = k
-- PR ranges from 1 to n = min(m, n)
-- `PR = exp(2 * H_2)` where `H_2 = -log(sum p_i²)` is the Rényi entropy of order 2
+- If energy is uniformly distributed across $k$ modes: PR = $k$
+- PR ranges from 1 to $n = \min(m, n)$
+- $\text{PR} = \exp(2 H_2)$ where $H_2 = -\log(\sum p_i^2)$ is the Renyi entropy of order 2
 
 The effective rank ratio normalizes by the maximum possible rank:
 
-```
-rho(W) = PR(W) / min(m, n)    in [0, 1]
-```
+$$\rho(\mathbf{W}) = \frac{\text{PR}(\mathbf{W})}{\min(m, n)} \in [0, 1]$$
 
 ### Stable Rank
 
 An alternative rank measure that is less sensitive to the tail of the spectrum:
 
-```
-srank(W) = ||W||_F^2 / ||W||_2^2 = sum_i sigma_i^2 / sigma_1^2
-```
+$$\text{srank}(\mathbf{W}) = \frac{\|\mathbf{W}\|_F^2}{\|\mathbf{W}\|_2^2} = \frac{\sum_i \sigma_i^2}{\sigma_1^2}$$
 
 **Properties:**
-- srank(W) <= rank(W) always (with equality iff all nonzero SVs are equal)
-- srank(W) >= 1 always (since sigma_1^2 <= sum sigma_i^2)
+- $\text{srank}(\mathbf{W}) \le \text{rank}(\mathbf{W})$ always (with equality iff all nonzero SVs are equal)
+- $\text{srank}(\mathbf{W}) \ge 1$ always (since $\sigma_1^2 \le \sum \sigma_i^2$)
 - More robust to small perturbations in the tail singular values than PR
 - srank measures how "spread out" the energy is relative to the dominant mode, while PR measures how spread out relative to a uniform distribution
 
-**Relationship to PR:** Both measure different aspects of spectral concentration. If the SV distribution follows a power law `σ_i ~ i^(-α)`, then:
-- `srank = sum(i^(-2α)) ~ n^(1-2α) / (1-2α)` for `α < 1/2`
-- `PR = (sum i^(-2α))² / sum i^(-4α)`. For `α < 1/4`: `PR ~ n * (1-4α)/(1-2α)²` (linear in n). For `1/4 < α < 1/2`: `PR ~ n^(2-4α) * const` (sub-linear growth). The two measures have different scaling exponents, with stable rank always <= PR for power-law spectra
+**Relationship to PR:** Both measure different aspects of spectral concentration. If the SV distribution follows a power law $\sigma_i \sim i^{-\alpha}$, then:
+- $\text{srank} = \sum i^{-2\alpha} \sim n^{1-2\alpha} / (1-2\alpha)$ for $\alpha < 1/2$
+- $\text{PR} = (\sum i^{-2\alpha})^2 / \sum i^{-4\alpha}$. For $\alpha < 1/4$: $\text{PR} \sim n \cdot (1-4\alpha)/(1-2\alpha)^2$ (linear in $n$). For $1/4 < \alpha < 1/2$: $\text{PR} \sim n^{2-4\alpha} \cdot \text{const}$ (sub-linear growth). The two measures have different scaling exponents, with stable rank always $\le$ PR for power-law spectra
 
 ### Spectral Entropy
 
 The Shannon entropy of the normalized squared SV distribution:
 
-```
-H(W) = -sum_i p_i * log(p_i)
-```
+$$H(\mathbf{W}) = -\sum_i p_i \log(p_i)$$
 
-Normalized by the maximum entropy log(n):
+Normalized by the maximum entropy $\log(n)$:
 
-```
-H_norm(W) = H(W) / log(min(m, n))    in [0, 1]
-```
+$$H_{\text{norm}}(\mathbf{W}) = \frac{H(\mathbf{W})}{\log(\min(m, n))} \in [0, 1]$$
 
 **Relationship to effective rank:** The exponential of Shannon entropy defines the "perplexity" of the distribution, which is another effective rank measure:
 
-```
-PR_Shannon = exp(H(W))
-```
+$$\text{PR}_{\text{Shannon}} = \exp(H(\mathbf{W}))$$
 
 This differs from the participation ratio (which uses Renyi-2 entropy). Shannon entropy is more sensitive to the tail of the distribution, while participation ratio is more sensitive to the dominant modes.
 
@@ -123,52 +106,42 @@ This differs from the participation ratio (which uses Renyi-2 entropy). Shannon 
 
 We test whether singular values follow a Zipf-like power law:
 
-```
-sigma_i ~ i^(-alpha)    for i = 1, 2, ..., n
-```
+$$\sigma_i \sim i^{-\alpha} \quad \text{for } i = 1, 2, \ldots, n$$
 
 This is fitted by log-log linear regression:
 
-```
-log(sigma_i) = -alpha * log(i) + const
-```
+$$\log(\sigma_i) = -\alpha \log(i) + \text{const}$$
 
-The exponent alpha controls compressibility:
-- alpha > 1: Very compressible (fast decay, low effective rank)
-- alpha ~ 0.5-1: Moderately compressible (typical for trained neural networks)
-- alpha < 0.5: Hard to compress (slow decay, high effective rank)
-- alpha = 0: Uniform SVs (incompressible, PR = n)
+The exponent $\alpha$ controls compressibility:
+- $\alpha > 1$: Very compressible (fast decay, low effective rank)
+- $\alpha \sim 0.5\text{--}1$: Moderately compressible (typical for trained neural networks)
+- $\alpha < 0.5$: Hard to compress (slow decay, high effective rank)
+- $\alpha = 0$: Uniform SVs (incompressible, $\text{PR} = n$)
 
-**Connection to random matrix theory:** For a random Gaussian matrix `W ∈ R^(m×n)`, the singular values follow the Marchenko-Pastur distribution (not a power law). The density of squared singular values is:
+**Connection to random matrix theory:** For a random Gaussian matrix $\mathbf{W} \in \mathbb{R}^{m \times n}$, the singular values follow the Marchenko-Pastur distribution (not a power law). The density of squared singular values is:
 
-```
-rho_MP(lambda) = sqrt((lambda_+ - lambda)(lambda - lambda_-)) / (2*pi*gamma*lambda)
-```
+$$\rho_{\text{MP}}(\lambda) = \frac{\sqrt{(\lambda_+ - \lambda)(\lambda - \lambda_-)}}{2\pi\gamma\lambda}$$
 
-where `γ = n/m`, `λ_± = (1 ± √γ)²`. Trained networks deviate from MP by developing a few large outlier singular values (learned features) superimposed on a bulk that resembles MP. The power-law exponent quantifies how much the top modes dominate over the bulk.
+where $\gamma = n/m$, $\lambda_{\pm} = (1 \pm \sqrt{\gamma})^2$. Trained networks deviate from MP by developing a few large outlier singular values (learned features) superimposed on a bulk that resembles MP. The power-law exponent quantifies how much the top modes dominate over the bulk.
 
 **Fit quality (R²):** Our R² values of 0.69-0.77 indicate the power-law is a reasonable but imperfect model. The deviation comes from two sources: (1) the bulk of singular values may follow MP rather than power-law, and (2) outlier singular values distort the fit. A more sophisticated analysis would fit a "spiked covariance" model (MP bulk + discrete spikes), but the simple power-law captures the essential compressibility information.
 
 ### Cumulative Energy
 
-The fraction of total Frobenius energy captured by the top r singular values:
+The fraction of total Frobenius energy captured by the top $r$ singular values:
 
-```
-E(r) = sum_{i=1}^{r} sigma_i^2 / sum_{i=1}^{n} sigma_i^2
-```
+$$E(r) = \frac{\sum_{i=1}^{r} \sigma_i^2}{\sum_{i=1}^{n} \sigma_i^2}$$
 
-We report the rank needed to capture 50%, 90%, and 99% of energy: r_50, r_90, r_99. These directly inform LoRA rank selection:
-- r_50: Minimum rank for a crude approximation
-- r_90: Rank for a good approximation (typical LoRA target)
-- r_99: Rank for near-lossless approximation
+We report the rank needed to capture 50%, 90%, and 99% of energy: $r_{50}$, $r_{90}$, $r_{99}$. These directly inform LoRA rank selection:
+- $r_{50}$: Minimum rank for a crude approximation
+- $r_{90}$: Rank for a good approximation (typical LoRA target)
+- $r_{99}$: Rank for near-lossless approximation
 
 ### Condition Number
 
-```
-kappa(W) = sigma_1 / sigma_n
-```
+$$\kappa(\mathbf{W}) = \frac{\sigma_1}{\sigma_n}$$
 
-Measures the ratio of maximum to minimum stretching. High condition numbers indicate near-singularity, which can cause numerical instability during training/inference. For a perfectly conditioned matrix, kappa = 1.
+Measures the ratio of maximum to minimum stretching. High condition numbers indicate near-singularity, which can cause numerical instability during training/inference. For a perfectly conditioned matrix, $\kappa = 1$.
 
 ## Methods
 
@@ -186,11 +159,9 @@ For each of the 7 weight matrices at each of the 36 layers, we compute the full 
 
 Based on the layer shuffle experiment, layers 0-16 form a "plateau" with similar weight norms, while layers 17-35 diverge. We test whether spectral structure also differs between these groups using Welch's t-test (unequal variance, two-sample t-test):
 
-```
-t = (mean_plateau - mean_late) / sqrt(s_p^2/n_p + s_l^2/n_l)
-```
+$$t = \frac{\bar{x}_{\text{plateau}} - \bar{x}_{\text{late}}}{\sqrt{s_p^2 / n_p + s_l^2 / n_l}}$$
 
-where n_p = 17 (plateau layers), n_l = 19 (late layers), and the degrees of freedom are computed via the Welch-Satterthwaite equation.
+where $n_p = 17$ (plateau layers), $n_l = 19$ (late layers), and the degrees of freedom are computed via the Welch-Satterthwaite equation.
 
 ## Results
 
@@ -215,7 +186,7 @@ where n_p = 17 (plateau layers), n_l = 19 (late layers), and the degrees of free
 
 ### Per-Matrix Spectral Statistics
 
-| Matrix | Eff Rank Ratio | Power-Law alpha | R² | Rank for 90% Energy |
+| Matrix | Eff Rank Ratio | Power-Law $\alpha$ | $R^2$ | Rank for 90% Energy |
 |--------|---------------|-----------------|-----|---------------------|
 | q_proj | 0.2535 | 0.616 +/- 0.051 | 0.766 | ~1370 |
 | k_proj | 0.3756 | 0.548 +/- 0.058 | 0.751 | ~640 |
@@ -231,16 +202,16 @@ where n_p = 17 (plateau layers), n_l = 19 (late layers), and the degrees of free
 
 ![Power-Law Exponents](results/power_law_exponent_all.png)
 
-All matrices show moderate power-law decay (alpha = 0.3-0.7) with R² ~ 0.69-0.77. Two distinct spectral regimes emerge:
+All matrices show moderate power-law decay ($\alpha = 0.3\text{--}0.7$) with $R^2 \sim 0.69\text{--}0.77$. Two distinct spectral regimes emerge:
 
-**Regime A — Steep decay (attention routing, alpha ~ 0.55-0.62):** Q, K, O projections have faster SV decay, concentrating energy in fewer dimensions. These matrices implement relatively simple linear maps (low intrinsic dimensionality). The steeper alpha means the top singular vectors capture a disproportionate share of the computation.
+**Regime A — Steep decay (attention routing, $\alpha \sim 0.55\text{--}0.62$):** Q, K, O projections have faster SV decay, concentrating energy in fewer dimensions. These matrices implement relatively simple linear maps (low intrinsic dimensionality). The steeper $\alpha$ means the top singular vectors capture a disproportionate share of the computation.
 
-**Regime B — Flat decay (MLP + value, alpha ~ 0.31-0.40):** V, gate, up, down projections have slower SV decay, spreading energy more uniformly. These matrices use more of their available capacity for richer transformations. The flatter alpha is closer to random-matrix behavior (MP distribution), suggesting these matrices have less "spiked" structure.
+**Regime B — Flat decay (MLP + value, $\alpha \sim 0.31\text{--}0.40$):** V, gate, up, down projections have slower SV decay, spreading energy more uniformly. These matrices use more of their available capacity for richer transformations. The flatter $\alpha$ is closer to random-matrix behavior (MP distribution), suggesting these matrices have less "spiked" structure.
 
-**Connection to Marchenko-Pastur:** For a random m x n matrix W with i.i.d. N(0, 1) entries (m >= n), the expected participation ratio is PR = mn/(m+n+1) ~ mn/(m+n), giving an effective rank ratio of PR/n ~ m/(m+n) = 1/(1+gamma) where gamma = n/m. For our matrices:
-- K/V (1024 x 2560): gamma = 1024/2560 = 0.40 -> MP predicts eff rank ratio ~ **0.71**
-- Q/O (4096 x 2560 or 2560 x 4096): gamma = 2560/4096 = 0.625 -> MP predicts eff rank ratio ~ **0.62**
-- MLP (9728 x 2560 or 2560 x 9728): gamma = 2560/9728 = 0.263 -> MP predicts eff rank ratio ~ **0.79**
+**Connection to Marchenko-Pastur:** For a random $m \times n$ matrix $\mathbf{W}$ with i.i.d. $N(0, 1)$ entries ($m \ge n$), the expected participation ratio is $\text{PR} = mn/(m+n+1) \sim mn/(m+n)$, giving an effective rank ratio of $\text{PR}/n \sim m/(m+n) = 1/(1+\gamma)$ where $\gamma = n/m$. For our matrices:
+- K/V ($1024 \times 2560$): $\gamma = 1024/2560 = 0.40$ — MP predicts eff rank ratio $\sim$ **0.71**
+- Q/O ($4096 \times 2560$ or $2560 \times 4096$): $\gamma = 2560/4096 = 0.625$ — MP predicts eff rank ratio $\sim$ **0.62**
+- MLP ($9728 \times 2560$ or $2560 \times 9728$): $\gamma = 2560/9728 = 0.263$ — MP predicts eff rank ratio $\sim$ **0.79**
 
 Actual Q eff rank (0.25) is well below the MP prediction for its shape (0.62), indicating heavy learned structure/compression — the Q projection concentrates information into far fewer directions than a random matrix would. K (0.38) is also well below its MP baseline (0.71). In contrast, V (0.61) and the MLP matrices (0.50-0.68) are closer to but still below their MP baselines (0.62-0.79), indicating they use a larger fraction of their available capacity while still showing some learned structure. All weight matrices are below their random baselines, confirming that training compresses information into fewer modes everywhere — but the degree of compression varies dramatically between routing (Q/K, ~40-60% of random baseline) and content processing (V/MLP, ~77-86% of random baseline).
 
@@ -321,7 +292,7 @@ Correlation: **r = -0.419, p = 0.011** (significant). Higher effective rank asso
 - **Low-rank layers** concentrate their computation in fewer dimensions. Within those dimensions, the nonlinear activations (softmax, SiLU) have stronger relative effect — a few dimensions doing nonlinear work dominate the signal.
 - **High-rank layers** spread computation across many dimensions. Each dimension contributes a small perturbation, and by the law of large numbers, the sum of many small nonlinear contributions approximates a linear map. This is related to the "self-averaging" property in high-dimensional statistics.
 
-Formally, if a layer applies n independent nonlinear channels with gain epsilon each, the aggregate nonlinearity scales as O(1/sqrt(n)) by CLT-type averaging, while the aggregate linear part scales as O(1). So higher n (rank) means more linear aggregate behavior.
+Formally, if a layer applies $n$ independent nonlinear channels with gain $\epsilon$ each, the aggregate nonlinearity scales as $O(1/\sqrt{n})$ by CLT-type averaging, while the aggregate linear part scales as $O(1)$. So higher $n$ (rank) means more linear aggregate behavior.
 
 **Critical refinement — the correlation is MLP-driven, not attention:** Per-matrix analysis reveals that the rank-linearity relationship is entirely concentrated in MLP matrices: up_proj (r = -0.75, p < 0.001), down_proj (r = -0.48, p = 0.003), gate_proj (r = -0.46, p = 0.005). All four attention projections (Q, K, V, O) show r ≈ 0 with the linearization gap. This means the self-averaging explanation applies specifically to the SwiGLU MLP, not to softmax attention — nonlinearity at the layer level is primarily determined by the MLP's spectral structure.
 
@@ -342,7 +313,7 @@ Weight spectral structure does not significantly predict representation geometry
 
 3. **Late layers are spectrally distinct from plateau layers**: Q, K, O, and gate projections all have significantly higher effective rank in layers 17-35 vs 0-16 (p < 0.05 for 4/7 matrices). The gate_proj effect is strongest (+0.17, p < 0.0001). Routing complexity increases with depth while content processing stays constant.
 
-4. **Moderate power-law decay in two regimes**: Attention routing matrices (alpha ~ 0.55-0.62) decay faster than MLP/value matrices (alpha ~ 0.31-0.40). R² ~ 0.7 indicates approximate but not perfect power-law behavior — the true distribution is likely MP-bulk + spiked outliers.
+4. **Moderate power-law decay in two regimes**: Attention routing matrices ($\alpha \sim 0.55\text{--}0.62$) decay faster than MLP/value matrices ($\alpha \sim 0.31\text{--}0.40$). $R^2 \sim 0.7$ indicates approximate but not perfect power-law behavior — the true distribution is likely MP-bulk + spiked outliers.
 
 5. **K-projection rank anticorrelates with layer criticality**: Layers with lower K-rank are harder to knock out (r = -0.40, p = 0.016). Constrained routing creates specialized, non-redundant computations.
 
@@ -365,7 +336,7 @@ Weight spectral structure does not significantly predict representation geometry
 6. **down_proj (0.64)** — MLP down-projection high-rank
 7. **up_proj (0.68)** — Least compressible, needs most capacity
 
-**Quantitative LoRA rank guidance:** For a matrix with effective rank ratio rho, the rank needed for 90% energy capture is approximately r_90 ~ rho * max_rank. For q_proj: r_90 ~ 0.25 * 2560 ~ 640. For up_proj: r_90 ~ 0.68 * 2560 ~ 1740. Standard LoRA uses ranks 4-64, which is far below even q_proj's r_90 — this works because LoRA only needs to capture the *task-specific delta*, not the full pre-trained weight.
+**Quantitative LoRA rank guidance:** For a matrix with effective rank ratio $\rho$, the rank needed for 90% energy capture is approximately $r_{90} \sim \rho \cdot \text{max\_rank}$. For q_proj: $r_{90} \sim 0.25 \times 2560 \sim 640$. For up_proj: $r_{90} \sim 0.68 \times 2560 \sim 1740$. Standard LoRA uses ranks 4-64, which is far below even q_proj's $r_{90}$ — this works because LoRA only needs to capture the *task-specific delta*, not the full pre-trained weight.
 
 **Stable rank provides a more conservative bound:** Stable rank ratios are dramatically lower than effective rank ratios (7-36% of effective rank), with gate_proj most extreme (stable rank only 7.5% of effective rank, i.e., ~0.038 ratio vs 0.50 effective rank ratio). This means energy is heavily concentrated in the top singular value. For rank selection based on actual energy distribution rather than participation ratio, stable rank suggests much smaller ranks may suffice: gate_proj stable rank ≈ 97 (vs effective rank 1276).
 
@@ -381,7 +352,7 @@ Uniform-rank LoRA wastes parameters on redundant plateau layers and under-fits c
 
 ### Static Factorization
 
-**3. Low-rank factorization of Q/K.** Q uses only 25% and K only 38% of effective rank — the most compressible matrices. Factoring `W_q = A*B` with rank r ~ 640 (vs 2560) halves Q compute; for K, r ~ 400 captures 90% of energy (vs max rank 1024). This is a static SVD-based decomposition applicable directly at inference with no retraining.
+**3. Low-rank factorization of Q/K.** Q uses only 25% and K only 38% of effective rank — the most compressible matrices. Factoring $\mathbf{W}_q = \mathbf{A}\mathbf{B}$ with rank $r \sim 640$ (vs 2560) halves Q compute; for K, $r \sim 400$ captures 90% of energy (vs max rank 1024). This is a static SVD-based decomposition applicable directly at inference with no retraining.
 
 **4. Multi-head pruning via Q-redundancy.** 32 query heads with only 25% effective rank means heavy redundancy. Plateau layers (Q eff rank ratio 0.23) are the best pruning targets — fewer heads with minimal impact on output quality.
 
@@ -393,10 +364,8 @@ Uniform-rank LoRA wastes parameters on redundant plateau layers and under-fits c
 
 ### Architectural Insights
 
-**7. Asymmetric latent attention (Tri-latent MLA).** DeepSeek-V2/V3's MLA uses a shared KV latent (`d_c = 512`). Our spectral data shows K and V have very different effective ranks (0.38 vs 0.61), motivating *separate* latent spaces sized by measured rank:
-```
-c_q: d ~ 640 (25% of hidden)    c_k: d ~ 970 (38%)    c_v: d ~ 1560 (61%)
-```
+**7. Asymmetric latent attention (Tri-latent MLA).** DeepSeek-V2/V3's MLA uses a shared KV latent ($d_c = 512$). Our spectral data shows K and V have very different effective ranks (0.38 vs 0.61), motivating *separate* latent spaces sized by measured rank:
+$$c_q: d \sim 640 \;(25\%\text{ of hidden}) \qquad c_k: d \sim 970 \;(38\%) \qquad c_v: d \sim 1560 \;(61\%)$$
 Depth-varying: the Q-rank jump at layer 24→25 (see Key Finding 4) motivates widening late-layer Q latent accordingly.
 
 **8. Shared-Q blocks for plateau layers.** Plateau Q eff rank ratio is just 0.23 — the lowest anywhere. Adjacent plateau layers' Q projections are largely the same linear map. Groups of 2-3 layers can share a single Q projection with per-layer low-rank residuals (rank 16-32), saving ~66% of Q parameters in plateau blocks.
