@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "description": "Contrastive completion pairs for T-17. Each group contains a prompt and 2-3 short completions with a known semantic relationship (synonym, antonym, style, or unrelated). Completions are short (1-8 tokens) for clean signal. No model inference needed — all completions are hand-crafted.",
+  "version": 3,
+  "description": "Contrastive completion pairs for T-17. Version 3 adds 35 more immediate-divergence antonym pairs (IDs 76-110) for balanced sample sizes: 48 immediate-antonym pairs matching 48 immediate-synonym pairs.",
   "system_message": "Answer concisely and directly. Do not restate the question.",
   "relationships": {
     "antonym": "Completions have opposite meanings. The prompt makes one clearly correct; the other is factually wrong but grammatically valid.",
@@ -15,11 +15,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "The Sun is a star"},
-        {"label": "B", "text": "The Sun is a planet"}
+        {
+          "label": "A",
+          "text": "The Sun is a star"
+        },
+        {
+          "label": "B",
+          "text": "The Sun is a planet"
+        }
       ],
       "expected": "A",
-      "pivot_token": "star/planet"
+      "pivot_token": "star/planet",
+      "prefix_group": "shared"
     },
     {
       "id": 1,
@@ -27,11 +34,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "At 150°C, water is a gas"},
-        {"label": "B", "text": "At 150°C, water is a liquid"}
+        {
+          "label": "A",
+          "text": "At 150°C, water is a gas"
+        },
+        {
+          "label": "B",
+          "text": "At 150°C, water is a liquid"
+        }
       ],
       "expected": "A",
-      "pivot_token": "gas/liquid"
+      "pivot_token": "gas/liquid",
+      "prefix_group": "shared"
     },
     {
       "id": 2,
@@ -39,11 +53,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Sound travels faster in water"},
-        {"label": "B", "text": "Sound travels faster in air"}
+        {
+          "label": "A",
+          "text": "Sound travels faster in water"
+        },
+        {
+          "label": "B",
+          "text": "Sound travels faster in air"
+        }
       ],
       "expected": "A",
-      "pivot_token": "water/air"
+      "pivot_token": "water/air",
+      "prefix_group": "shared"
     },
     {
       "id": 3,
@@ -51,11 +72,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "The Earth's core is extremely hot"},
-        {"label": "B", "text": "The Earth's core is extremely cold"}
+        {
+          "label": "A",
+          "text": "The Earth's core is extremely hot"
+        },
+        {
+          "label": "B",
+          "text": "The Earth's core is extremely cold"
+        }
       ],
       "expected": "A",
-      "pivot_token": "hot/cold"
+      "pivot_token": "hot/cold",
+      "prefix_group": "shared"
     },
     {
       "id": 4,
@@ -63,11 +91,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Diamond is harder than glass"},
-        {"label": "B", "text": "Diamond is softer than glass"}
+        {
+          "label": "A",
+          "text": "Diamond is harder than glass"
+        },
+        {
+          "label": "B",
+          "text": "Diamond is softer than glass"
+        }
       ],
       "expected": "A",
-      "pivot_token": "harder/softer"
+      "pivot_token": "harder/softer",
+      "prefix_group": "shared"
     },
     {
       "id": 5,
@@ -75,11 +110,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "The Earth rotates counterclockwise"},
-        {"label": "B", "text": "The Earth rotates clockwise"}
+        {
+          "label": "A",
+          "text": "The Earth rotates counterclockwise"
+        },
+        {
+          "label": "B",
+          "text": "The Earth rotates clockwise"
+        }
       ],
       "expected": "A",
-      "pivot_token": "counterclockwise/clockwise"
+      "pivot_token": "counterclockwise/clockwise",
+      "prefix_group": "shared"
     },
     {
       "id": 6,
@@ -87,11 +129,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "The Pacific is the largest ocean"},
-        {"label": "B", "text": "The Pacific is the smallest ocean"}
+        {
+          "label": "A",
+          "text": "The Pacific is the largest ocean"
+        },
+        {
+          "label": "B",
+          "text": "The Pacific is the smallest ocean"
+        }
       ],
       "expected": "A",
-      "pivot_token": "largest/smallest"
+      "pivot_token": "largest/smallest",
+      "prefix_group": "shared"
     },
     {
       "id": 7,
@@ -99,11 +148,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Oxygen is a nonmetal"},
-        {"label": "B", "text": "Oxygen is a metal"}
+        {
+          "label": "A",
+          "text": "Oxygen is a nonmetal"
+        },
+        {
+          "label": "B",
+          "text": "Oxygen is a metal"
+        }
       ],
       "expected": "A",
-      "pivot_token": "nonmetal/metal"
+      "pivot_token": "nonmetal/metal",
+      "prefix_group": "shared"
     },
     {
       "id": 8,
@@ -111,11 +167,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Electrons have a negative charge"},
-        {"label": "B", "text": "Electrons have a positive charge"}
+        {
+          "label": "A",
+          "text": "Electrons have a negative charge"
+        },
+        {
+          "label": "B",
+          "text": "Electrons have a positive charge"
+        }
       ],
       "expected": "A",
-      "pivot_token": "negative/positive"
+      "pivot_token": "negative/positive",
+      "prefix_group": "shared"
     },
     {
       "id": 9,
@@ -123,11 +186,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Absolute zero is the lowest possible temperature"},
-        {"label": "B", "text": "Absolute zero is the highest possible temperature"}
+        {
+          "label": "A",
+          "text": "Absolute zero is the lowest possible temperature"
+        },
+        {
+          "label": "B",
+          "text": "Absolute zero is the highest possible temperature"
+        }
       ],
       "expected": "A",
-      "pivot_token": "lowest/highest"
+      "pivot_token": "lowest/highest",
+      "prefix_group": "shared"
     },
     {
       "id": 10,
@@ -135,12 +205,22 @@
       "category": "factual",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Tokyo"},
-        {"label": "B", "text": "The capital of Japan is Tokyo"},
-        {"label": "C", "text": "Tokyo is the capital"}
+        {
+          "label": "A",
+          "text": "Tokyo"
+        },
+        {
+          "label": "B",
+          "text": "The capital of Japan is Tokyo"
+        },
+        {
+          "label": "C",
+          "text": "Tokyo is the capital"
+        }
       ],
       "expected": null,
-      "pivot_token": "Tokyo (all share same core answer)"
+      "pivot_token": "Tokyo (all share same core answer)",
+      "prefix_group": "immediate"
     },
     {
       "id": 11,
@@ -148,12 +228,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Fast"},
-        {"label": "B", "text": "Swift"},
-        {"label": "C", "text": "Rapid"}
+        {
+          "label": "A",
+          "text": "Fast"
+        },
+        {
+          "label": "B",
+          "text": "Swift"
+        },
+        {
+          "label": "C",
+          "text": "Rapid"
+        }
       ],
       "expected": null,
-      "pivot_token": "fast/swift/rapid"
+      "pivot_token": "fast/swift/rapid",
+      "prefix_group": "immediate"
     },
     {
       "id": 12,
@@ -161,12 +251,22 @@
       "category": "factual",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "It melts"},
-        {"label": "B", "text": "It turns into water"},
-        {"label": "C", "text": "The ice liquefies"}
+        {
+          "label": "A",
+          "text": "It melts"
+        },
+        {
+          "label": "B",
+          "text": "It turns into water"
+        },
+        {
+          "label": "C",
+          "text": "The ice liquefies"
+        }
       ],
       "expected": null,
-      "pivot_token": "melts/turns into water/liquefies"
+      "pivot_token": "melts/turns into water/liquefies",
+      "prefix_group": "immediate"
     },
     {
       "id": 13,
@@ -174,12 +274,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Sad"},
-        {"label": "B", "text": "Unhappy"},
-        {"label": "C", "text": "Miserable"}
+        {
+          "label": "A",
+          "text": "Sad"
+        },
+        {
+          "label": "B",
+          "text": "Unhappy"
+        },
+        {
+          "label": "C",
+          "text": "Miserable"
+        }
       ],
       "expected": null,
-      "pivot_token": "sad/unhappy/miserable"
+      "pivot_token": "sad/unhappy/miserable",
+      "prefix_group": "immediate"
     },
     {
       "id": 14,
@@ -187,12 +297,22 @@
       "category": "factual",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Water"},
-        {"label": "B", "text": "H2O is the chemical formula for water"},
-        {"label": "C", "text": "It refers to water"}
+        {
+          "label": "A",
+          "text": "Water"
+        },
+        {
+          "label": "B",
+          "text": "H2O is the chemical formula for water"
+        },
+        {
+          "label": "C",
+          "text": "It refers to water"
+        }
       ],
       "expected": null,
-      "pivot_token": "water (all share same referent)"
+      "pivot_token": "water (all share same referent)",
+      "prefix_group": "immediate"
     },
     {
       "id": 15,
@@ -200,12 +320,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Enormous"},
-        {"label": "B", "text": "Huge"},
-        {"label": "C", "text": "Immense"}
+        {
+          "label": "A",
+          "text": "Enormous"
+        },
+        {
+          "label": "B",
+          "text": "Huge"
+        },
+        {
+          "label": "C",
+          "text": "Immense"
+        }
       ],
       "expected": null,
-      "pivot_token": "enormous/huge/immense"
+      "pivot_token": "enormous/huge/immense",
+      "prefix_group": "immediate"
     },
     {
       "id": 16,
@@ -213,12 +343,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Dark"},
-        {"label": "B", "text": "Dim"},
-        {"label": "C", "text": "Murky"}
+        {
+          "label": "A",
+          "text": "Dark"
+        },
+        {
+          "label": "B",
+          "text": "Dim"
+        },
+        {
+          "label": "C",
+          "text": "Murky"
+        }
       ],
       "expected": null,
-      "pivot_token": "dark/dim/murky"
+      "pivot_token": "dark/dim/murky",
+      "prefix_group": "immediate"
     },
     {
       "id": 17,
@@ -226,12 +366,22 @@
       "category": "reasoning",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "4"},
-        {"label": "B", "text": "The answer is 4"},
-        {"label": "C", "text": "2 + 2 = 4"}
+        {
+          "label": "A",
+          "text": "4"
+        },
+        {
+          "label": "B",
+          "text": "The answer is 4"
+        },
+        {
+          "label": "C",
+          "text": "2 + 2 = 4"
+        }
       ],
       "expected": null,
-      "pivot_token": "4 (all same answer, different framing)"
+      "pivot_token": "4 (all same answer, different framing)",
+      "prefix_group": "immediate"
     },
     {
       "id": 18,
@@ -239,12 +389,22 @@
       "category": "factual",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "100 degrees Celsius"},
-        {"label": "B", "text": "212 degrees Fahrenheit"},
-        {"label": "C", "text": "100°C at standard pressure"}
+        {
+          "label": "A",
+          "text": "100 degrees Celsius"
+        },
+        {
+          "label": "B",
+          "text": "212 degrees Fahrenheit"
+        },
+        {
+          "label": "C",
+          "text": "100°C at standard pressure"
+        }
       ],
       "expected": null,
-      "pivot_token": "100C/212F (same fact, different units)"
+      "pivot_token": "100C/212F (same fact, different units)",
+      "prefix_group": "immediate"
     },
     {
       "id": 19,
@@ -252,12 +412,22 @@
       "category": "factual",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Jupiter"},
-        {"label": "B", "text": "The largest planet is Jupiter"},
-        {"label": "C", "text": "Jupiter is the largest"}
+        {
+          "label": "A",
+          "text": "Jupiter"
+        },
+        {
+          "label": "B",
+          "text": "The largest planet is Jupiter"
+        },
+        {
+          "label": "C",
+          "text": "Jupiter is the largest"
+        }
       ],
       "expected": null,
-      "pivot_token": "Jupiter (all same answer)"
+      "pivot_token": "Jupiter (all same answer)",
+      "prefix_group": "immediate"
     },
     {
       "id": 20,
@@ -265,12 +435,22 @@
       "category": "technical",
       "relationship": "style",
       "completions": [
-        {"label": "formal", "text": "Gravity is a fundamental force of attraction between objects with mass"},
-        {"label": "casual", "text": "Gravity is basically what keeps you on the ground"},
-        {"label": "technical", "text": "Gravity is the curvature of spacetime caused by mass-energy"}
+        {
+          "label": "formal",
+          "text": "Gravity is a fundamental force of attraction between objects with mass"
+        },
+        {
+          "label": "casual",
+          "text": "Gravity is basically what keeps you on the ground"
+        },
+        {
+          "label": "technical",
+          "text": "Gravity is the curvature of spacetime caused by mass-energy"
+        }
       ],
       "expected": null,
-      "pivot_token": "formal/casual/technical register"
+      "pivot_token": "formal/casual/technical register",
+      "prefix_group": "immediate"
     },
     {
       "id": 21,
@@ -278,12 +458,22 @@
       "category": "factual",
       "relationship": "style",
       "completions": [
-        {"label": "formal", "text": "The sky appears blue due to Rayleigh scattering of sunlight"},
-        {"label": "casual", "text": "Sunlight bounces off air molecules and blue light scatters the most"},
-        {"label": "terse", "text": "Rayleigh scattering"}
+        {
+          "label": "formal",
+          "text": "The sky appears blue due to Rayleigh scattering of sunlight"
+        },
+        {
+          "label": "casual",
+          "text": "Sunlight bounces off air molecules and blue light scatters the most"
+        },
+        {
+          "label": "terse",
+          "text": "Rayleigh scattering"
+        }
       ],
       "expected": null,
-      "pivot_token": "same phenomenon, different verbosity"
+      "pivot_token": "same phenomenon, different verbosity",
+      "prefix_group": "immediate"
     },
     {
       "id": 22,
@@ -291,12 +481,22 @@
       "category": "technical",
       "relationship": "style",
       "completions": [
-        {"label": "formal", "text": "Photosynthesis is the biochemical process by which plants convert light energy into chemical energy"},
-        {"label": "casual", "text": "It's how plants make food from sunlight"},
-        {"label": "technical", "text": "6CO2 + 6H2O + light → C6H12O6 + 6O2"}
+        {
+          "label": "formal",
+          "text": "Photosynthesis is the biochemical process by which plants convert light energy into chemical energy"
+        },
+        {
+          "label": "casual",
+          "text": "It's how plants make food from sunlight"
+        },
+        {
+          "label": "technical",
+          "text": "6CO2 + 6H2O + light → C6H12O6 + 6O2"
+        }
       ],
       "expected": null,
-      "pivot_token": "same concept, different register"
+      "pivot_token": "same concept, different register",
+      "prefix_group": "immediate"
     },
     {
       "id": 23,
@@ -304,12 +504,22 @@
       "category": "factual",
       "relationship": "style",
       "completions": [
-        {"label": "formal", "text": "DNA stands for deoxyribonucleic acid"},
-        {"label": "casual", "text": "Deoxyribonucleic acid"},
-        {"label": "verbose", "text": "DNA is an abbreviation for deoxyribonucleic acid, which is the molecule that carries genetic information"}
+        {
+          "label": "formal",
+          "text": "DNA stands for deoxyribonucleic acid"
+        },
+        {
+          "label": "casual",
+          "text": "Deoxyribonucleic acid"
+        },
+        {
+          "label": "verbose",
+          "text": "DNA is an abbreviation for deoxyribonucleic acid, which is the molecule that carries genetic information"
+        }
       ],
       "expected": null,
-      "pivot_token": "same answer, varying elaboration"
+      "pivot_token": "same answer, varying elaboration",
+      "prefix_group": "immediate"
     },
     {
       "id": 24,
@@ -317,12 +527,22 @@
       "category": "technical",
       "relationship": "style",
       "completions": [
-        {"label": "formal", "text": "Computers store data as binary digits in electronic memory circuits"},
-        {"label": "casual", "text": "Everything gets turned into ones and zeros"},
-        {"label": "technical", "text": "Data is stored as binary states in DRAM capacitors or NAND flash cells"}
+        {
+          "label": "formal",
+          "text": "Computers store data as binary digits in electronic memory circuits"
+        },
+        {
+          "label": "casual",
+          "text": "Everything gets turned into ones and zeros"
+        },
+        {
+          "label": "technical",
+          "text": "Data is stored as binary states in DRAM capacitors or NAND flash cells"
+        }
       ],
       "expected": null,
-      "pivot_token": "same concept, different abstraction levels"
+      "pivot_token": "same concept, different abstraction levels",
+      "prefix_group": "immediate"
     },
     {
       "id": 25,
@@ -330,12 +550,22 @@
       "category": "reasoning",
       "relationship": "style",
       "completions": [
-        {"label": "terse", "text": "56"},
-        {"label": "verbose", "text": "The product of 7 and 8 is 56"},
-        {"label": "step-by-step", "text": "7 × 8 = 56"}
+        {
+          "label": "terse",
+          "text": "56"
+        },
+        {
+          "label": "verbose",
+          "text": "The product of 7 and 8 is 56"
+        },
+        {
+          "label": "step-by-step",
+          "text": "7 × 8 = 56"
+        }
       ],
       "expected": null,
-      "pivot_token": "56 (same answer, different framing)"
+      "pivot_token": "56 (same answer, different framing)",
+      "prefix_group": "immediate"
     },
     {
       "id": 26,
@@ -343,12 +573,22 @@
       "category": "factual",
       "relationship": "unrelated",
       "completions": [
-        {"label": "correct", "text": "Paris"},
-        {"label": "animal", "text": "Elephant"},
-        {"label": "number", "text": "42"}
+        {
+          "label": "correct",
+          "text": "Paris"
+        },
+        {
+          "label": "animal",
+          "text": "Elephant"
+        },
+        {
+          "label": "number",
+          "text": "42"
+        }
       ],
       "expected": "correct",
-      "pivot_token": "Paris vs completely unrelated tokens"
+      "pivot_token": "Paris vs completely unrelated tokens",
+      "prefix_group": "immediate"
     },
     {
       "id": 27,
@@ -356,12 +596,22 @@
       "category": "factual",
       "relationship": "unrelated",
       "completions": [
-        {"label": "correct", "text": "Blue"},
-        {"label": "food", "text": "Spaghetti"},
-        {"label": "math", "text": "The integral diverges"}
+        {
+          "label": "correct",
+          "text": "Blue"
+        },
+        {
+          "label": "food",
+          "text": "Spaghetti"
+        },
+        {
+          "label": "math",
+          "text": "The integral diverges"
+        }
       ],
       "expected": "correct",
-      "pivot_token": "correct answer vs nonsensical completions"
+      "pivot_token": "correct answer vs nonsensical completions",
+      "prefix_group": "immediate"
     },
     {
       "id": 28,
@@ -369,12 +619,22 @@
       "category": "reasoning",
       "relationship": "unrelated",
       "completions": [
-        {"label": "correct", "text": "8"},
-        {"label": "color", "text": "Green"},
-        {"label": "place", "text": "Antarctica"}
+        {
+          "label": "correct",
+          "text": "8"
+        },
+        {
+          "label": "color",
+          "text": "Green"
+        },
+        {
+          "label": "place",
+          "text": "Antarctica"
+        }
       ],
       "expected": "correct",
-      "pivot_token": "8 vs semantically unrelated"
+      "pivot_token": "8 vs semantically unrelated",
+      "prefix_group": "immediate"
     },
     {
       "id": 29,
@@ -382,12 +642,22 @@
       "category": "factual",
       "relationship": "unrelated",
       "completions": [
-        {"label": "correct", "text": "Oxygen"},
-        {"label": "animal", "text": "Penguin"},
-        {"label": "action", "text": "Running quickly"}
+        {
+          "label": "correct",
+          "text": "Oxygen"
+        },
+        {
+          "label": "animal",
+          "text": "Penguin"
+        },
+        {
+          "label": "action",
+          "text": "Running quickly"
+        }
       ],
       "expected": "correct",
-      "pivot_token": "Oxygen vs completely unrelated"
+      "pivot_token": "Oxygen vs completely unrelated",
+      "prefix_group": "immediate"
     },
     {
       "id": 30,
@@ -395,12 +665,22 @@
       "category": "factual",
       "relationship": "unrelated",
       "completions": [
-        {"label": "correct", "text": "Dog"},
-        {"label": "mineral", "text": "Quartz"},
-        {"label": "abstract", "text": "Democracy"}
+        {
+          "label": "correct",
+          "text": "Dog"
+        },
+        {
+          "label": "mineral",
+          "text": "Quartz"
+        },
+        {
+          "label": "abstract",
+          "text": "Democracy"
+        }
       ],
       "expected": "correct",
-      "pivot_token": "valid answer vs wrong semantic domain"
+      "pivot_token": "valid answer vs wrong semantic domain",
+      "prefix_group": "immediate"
     },
     {
       "id": 31,
@@ -408,11 +688,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Light is faster than sound"},
-        {"label": "B", "text": "Light is slower than sound"}
+        {
+          "label": "A",
+          "text": "Light is faster than sound"
+        },
+        {
+          "label": "B",
+          "text": "Light is slower than sound"
+        }
       ],
       "expected": "A",
-      "pivot_token": "faster/slower"
+      "pivot_token": "faster/slower",
+      "prefix_group": "shared"
     },
     {
       "id": 32,
@@ -420,11 +707,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "The Sahara is extremely dry"},
-        {"label": "B", "text": "The Sahara is extremely wet"}
+        {
+          "label": "A",
+          "text": "The Sahara is extremely dry"
+        },
+        {
+          "label": "B",
+          "text": "The Sahara is extremely wet"
+        }
       ],
       "expected": "A",
-      "pivot_token": "dry/wet"
+      "pivot_token": "dry/wet",
+      "prefix_group": "shared"
     },
     {
       "id": 33,
@@ -432,11 +726,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Ice floats in water"},
-        {"label": "B", "text": "Ice sinks in water"}
+        {
+          "label": "A",
+          "text": "Ice floats in water"
+        },
+        {
+          "label": "B",
+          "text": "Ice sinks in water"
+        }
       ],
       "expected": "A",
-      "pivot_token": "floats/sinks"
+      "pivot_token": "floats/sinks",
+      "prefix_group": "shared"
     },
     {
       "id": 34,
@@ -444,11 +745,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "The Amazon is extremely long"},
-        {"label": "B", "text": "The Amazon is extremely short"}
+        {
+          "label": "A",
+          "text": "The Amazon is extremely long"
+        },
+        {
+          "label": "B",
+          "text": "The Amazon is extremely short"
+        }
       ],
       "expected": "A",
-      "pivot_token": "long/short"
+      "pivot_token": "long/short",
+      "prefix_group": "shared"
     },
     {
       "id": 35,
@@ -456,11 +764,18 @@
       "category": "world_knowledge",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Einstein's theory was accepted"},
-        {"label": "B", "text": "Einstein's theory was rejected"}
+        {
+          "label": "A",
+          "text": "Einstein's theory was accepted"
+        },
+        {
+          "label": "B",
+          "text": "Einstein's theory was rejected"
+        }
       ],
       "expected": "A",
-      "pivot_token": "accepted/rejected"
+      "pivot_token": "accepted/rejected",
+      "prefix_group": "shared"
     },
     {
       "id": 36,
@@ -468,12 +783,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Tiny"},
-        {"label": "B", "text": "Minuscule"},
-        {"label": "C", "text": "Miniature"}
+        {
+          "label": "A",
+          "text": "Tiny"
+        },
+        {
+          "label": "B",
+          "text": "Minuscule"
+        },
+        {
+          "label": "C",
+          "text": "Miniature"
+        }
       ],
       "expected": null,
-      "pivot_token": "tiny/minuscule/miniature"
+      "pivot_token": "tiny/minuscule/miniature",
+      "prefix_group": "immediate"
     },
     {
       "id": 37,
@@ -481,12 +806,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Improve"},
-        {"label": "B", "text": "Enhance"},
-        {"label": "C", "text": "Ameliorate"}
+        {
+          "label": "A",
+          "text": "Improve"
+        },
+        {
+          "label": "B",
+          "text": "Enhance"
+        },
+        {
+          "label": "C",
+          "text": "Ameliorate"
+        }
       ],
       "expected": null,
-      "pivot_token": "improve/enhance/ameliorate"
+      "pivot_token": "improve/enhance/ameliorate",
+      "prefix_group": "immediate"
     },
     {
       "id": 38,
@@ -494,12 +829,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Courageous"},
-        {"label": "B", "text": "Valiant"},
-        {"label": "C", "text": "Bold"}
+        {
+          "label": "A",
+          "text": "Courageous"
+        },
+        {
+          "label": "B",
+          "text": "Valiant"
+        },
+        {
+          "label": "C",
+          "text": "Bold"
+        }
       ],
       "expected": null,
-      "pivot_token": "courageous/valiant/bold"
+      "pivot_token": "courageous/valiant/bold",
+      "prefix_group": "immediate"
     },
     {
       "id": 39,
@@ -507,12 +852,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Start"},
-        {"label": "B", "text": "Commence"},
-        {"label": "C", "text": "Initiate"}
+        {
+          "label": "A",
+          "text": "Start"
+        },
+        {
+          "label": "B",
+          "text": "Commence"
+        },
+        {
+          "label": "C",
+          "text": "Initiate"
+        }
       ],
       "expected": null,
-      "pivot_token": "start/commence/initiate"
+      "pivot_token": "start/commence/initiate",
+      "prefix_group": "immediate"
     },
     {
       "id": 40,
@@ -520,12 +875,22 @@
       "category": "factual",
       "relationship": "unrelated",
       "completions": [
-        {"label": "correct", "text": "NaCl"},
-        {"label": "music", "text": "Beethoven"},
-        {"label": "weather", "text": "Thunderstorm"}
+        {
+          "label": "correct",
+          "text": "NaCl"
+        },
+        {
+          "label": "music",
+          "text": "Beethoven"
+        },
+        {
+          "label": "weather",
+          "text": "Thunderstorm"
+        }
       ],
       "expected": "correct",
-      "pivot_token": "NaCl vs unrelated domains"
+      "pivot_token": "NaCl vs unrelated domains",
+      "prefix_group": "immediate"
     },
     {
       "id": 41,
@@ -533,11 +898,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "The North Pole is in the Arctic"},
-        {"label": "B", "text": "The North Pole is in the Antarctic"}
+        {
+          "label": "A",
+          "text": "The North Pole is in the Arctic"
+        },
+        {
+          "label": "B",
+          "text": "The North Pole is in the Antarctic"
+        }
       ],
       "expected": "A",
-      "pivot_token": "Arctic/Antarctic"
+      "pivot_token": "Arctic/Antarctic",
+      "prefix_group": "shared"
     },
     {
       "id": 42,
@@ -545,11 +917,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Whales are mammals"},
-        {"label": "B", "text": "Whales are fish"}
+        {
+          "label": "A",
+          "text": "Whales are mammals"
+        },
+        {
+          "label": "B",
+          "text": "Whales are fish"
+        }
       ],
       "expected": "A",
-      "pivot_token": "mammals/fish"
+      "pivot_token": "mammals/fish",
+      "prefix_group": "shared"
     },
     {
       "id": 43,
@@ -557,11 +936,18 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Iron is a conductor"},
-        {"label": "B", "text": "Iron is an insulator"}
+        {
+          "label": "A",
+          "text": "Iron is a conductor"
+        },
+        {
+          "label": "B",
+          "text": "Iron is an insulator"
+        }
       ],
       "expected": "A",
-      "pivot_token": "conductor/insulator"
+      "pivot_token": "conductor/insulator",
+      "prefix_group": "shared"
     },
     {
       "id": 44,
@@ -569,12 +955,22 @@
       "category": "linguistic",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "Very old"},
-        {"label": "B", "text": "Extremely aged"},
-        {"label": "C", "text": "From long ago"}
+        {
+          "label": "A",
+          "text": "Very old"
+        },
+        {
+          "label": "B",
+          "text": "Extremely aged"
+        },
+        {
+          "label": "C",
+          "text": "From long ago"
+        }
       ],
       "expected": null,
-      "pivot_token": "old/aged/long ago"
+      "pivot_token": "old/aged/long ago",
+      "prefix_group": "immediate"
     },
     {
       "id": 45,
@@ -582,12 +978,22 @@
       "category": "factual",
       "relationship": "style",
       "completions": [
-        {"label": "formal", "text": "Rain forms when water vapor in the atmosphere condenses into droplets"},
-        {"label": "casual", "text": "Water evaporates, goes up, cools down, and falls back as drops"},
-        {"label": "technical", "text": "Precipitation occurs via nucleation of supersaturated vapor on condensation nuclei"}
+        {
+          "label": "formal",
+          "text": "Rain forms when water vapor in the atmosphere condenses into droplets"
+        },
+        {
+          "label": "casual",
+          "text": "Water evaporates, goes up, cools down, and falls back as drops"
+        },
+        {
+          "label": "technical",
+          "text": "Precipitation occurs via nucleation of supersaturated vapor on condensation nuclei"
+        }
       ],
       "expected": null,
-      "pivot_token": "same process, different registers"
+      "pivot_token": "same process, different registers",
+      "prefix_group": "immediate"
     },
     {
       "id": 46,
@@ -595,12 +1001,22 @@
       "category": "technical",
       "relationship": "style",
       "completions": [
-        {"label": "formal", "text": "An atom is the smallest unit of ordinary matter that constitutes a chemical element"},
-        {"label": "casual", "text": "An atom is the tiniest building block of stuff"},
-        {"label": "technical", "text": "An atom consists of a nucleus of protons and neutrons surrounded by an electron cloud"}
+        {
+          "label": "formal",
+          "text": "An atom is the smallest unit of ordinary matter that constitutes a chemical element"
+        },
+        {
+          "label": "casual",
+          "text": "An atom is the tiniest building block of stuff"
+        },
+        {
+          "label": "technical",
+          "text": "An atom consists of a nucleus of protons and neutrons surrounded by an electron cloud"
+        }
       ],
       "expected": null,
-      "pivot_token": "same concept, different abstraction"
+      "pivot_token": "same concept, different abstraction",
+      "prefix_group": "immediate"
     },
     {
       "id": 47,
@@ -608,12 +1024,22 @@
       "category": "factual",
       "relationship": "synonym",
       "completions": [
-        {"label": "A", "text": "About 300,000 km/s"},
-        {"label": "B", "text": "Approximately 3 × 10^8 m/s"},
-        {"label": "C", "text": "Roughly 186,000 miles per second"}
+        {
+          "label": "A",
+          "text": "About 300,000 km/s"
+        },
+        {
+          "label": "B",
+          "text": "Approximately 3 × 10^8 m/s"
+        },
+        {
+          "label": "C",
+          "text": "Roughly 186,000 miles per second"
+        }
       ],
       "expected": null,
-      "pivot_token": "same value, different units/notation"
+      "pivot_token": "same value, different units/notation",
+      "prefix_group": "immediate"
     },
     {
       "id": 48,
@@ -621,12 +1047,22 @@
       "category": "world_knowledge",
       "relationship": "unrelated",
       "completions": [
-        {"label": "correct", "text": "William Shakespeare"},
-        {"label": "food", "text": "Chocolate cake"},
-        {"label": "tech", "text": "The TCP/IP protocol"}
+        {
+          "label": "correct",
+          "text": "William Shakespeare"
+        },
+        {
+          "label": "food",
+          "text": "Chocolate cake"
+        },
+        {
+          "label": "tech",
+          "text": "The TCP/IP protocol"
+        }
       ],
       "expected": "correct",
-      "pivot_token": "Shakespeare vs completely unrelated"
+      "pivot_token": "Shakespeare vs completely unrelated",
+      "prefix_group": "immediate"
     },
     {
       "id": 49,
@@ -634,11 +1070,1229 @@
       "category": "factual",
       "relationship": "antonym",
       "completions": [
-        {"label": "A", "text": "Venus is much hotter than Earth"},
-        {"label": "B", "text": "Venus is much cooler than Earth"}
+        {
+          "label": "A",
+          "text": "Venus is much hotter than Earth"
+        },
+        {
+          "label": "B",
+          "text": "Venus is much cooler than Earth"
+        }
       ],
       "expected": "A",
-      "pivot_token": "hotter/cooler"
+      "pivot_token": "hotter/cooler",
+      "prefix_group": "shared"
+    },
+    {
+      "id": 50,
+      "prompt": "Is the Sun a star or a planet? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Star"
+        },
+        {
+          "label": "B",
+          "text": "Planet"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Star/Planet"
+    },
+    {
+      "id": 51,
+      "prompt": "Is water at 150°C a liquid or a gas? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Gas"
+        },
+        {
+          "label": "B",
+          "text": "Liquid"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Gas/Liquid"
+    },
+    {
+      "id": 52,
+      "prompt": "Is the Earth's core hot or cold? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Hot"
+        },
+        {
+          "label": "B",
+          "text": "Cold"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Hot/Cold"
+    },
+    {
+      "id": 53,
+      "prompt": "Is diamond harder or softer than glass? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Harder"
+        },
+        {
+          "label": "B",
+          "text": "Softer"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Harder/Softer"
+    },
+    {
+      "id": 54,
+      "prompt": "Is the Pacific Ocean the largest or smallest ocean? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Largest"
+        },
+        {
+          "label": "B",
+          "text": "Smallest"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Largest/Smallest"
+    },
+    {
+      "id": 55,
+      "prompt": "Is oxygen a metal or nonmetal? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Nonmetal"
+        },
+        {
+          "label": "B",
+          "text": "Metal"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Nonmetal/Metal"
+    },
+    {
+      "id": 56,
+      "prompt": "Do electrons have negative or positive charge? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Negative"
+        },
+        {
+          "label": "B",
+          "text": "Positive"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Negative/Positive"
+    },
+    {
+      "id": 57,
+      "prompt": "Is light faster or slower than sound? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Faster"
+        },
+        {
+          "label": "B",
+          "text": "Slower"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Faster/Slower"
+    },
+    {
+      "id": 58,
+      "prompt": "Is the Sahara Desert wet or dry? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Dry"
+        },
+        {
+          "label": "B",
+          "text": "Wet"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Dry/Wet"
+    },
+    {
+      "id": 59,
+      "prompt": "Does ice float or sink in water? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Float"
+        },
+        {
+          "label": "B",
+          "text": "Sink"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Float/Sink"
+    },
+    {
+      "id": 60,
+      "prompt": "Are whales fish or mammals? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Mammals"
+        },
+        {
+          "label": "B",
+          "text": "Fish"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Mammals/Fish"
+    },
+    {
+      "id": 61,
+      "prompt": "Is iron a conductor or insulator? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Conductor"
+        },
+        {
+          "label": "B",
+          "text": "Insulator"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Conductor/Insulator"
+    },
+    {
+      "id": 62,
+      "prompt": "Is Venus hotter or cooler than Earth? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "prefix_group": "immediate",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Hotter"
+        },
+        {
+          "label": "B",
+          "text": "Cooler"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Hotter/Cooler"
+    },
+    {
+      "id": 63,
+      "prompt": "Describe the speed of a cheetah.",
+      "category": "factual",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "A cheetah is fast"
+        },
+        {
+          "label": "B",
+          "text": "A cheetah is swift"
+        },
+        {
+          "label": "C",
+          "text": "A cheetah is rapid"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "fast/swift/rapid"
+    },
+    {
+      "id": 64,
+      "prompt": "How would you describe something very large?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "It is enormous"
+        },
+        {
+          "label": "B",
+          "text": "It is huge"
+        },
+        {
+          "label": "C",
+          "text": "It is immense"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "enormous/huge/immense"
+    },
+    {
+      "id": 65,
+      "prompt": "What happens when you heat ice?",
+      "category": "factual",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "The ice melts"
+        },
+        {
+          "label": "B",
+          "text": "The ice liquefies"
+        },
+        {
+          "label": "C",
+          "text": "The ice thaws"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "melts/liquefies/thaws"
+    },
+    {
+      "id": 66,
+      "prompt": "What word describes a lack of light?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "It is dark"
+        },
+        {
+          "label": "B",
+          "text": "It is dim"
+        },
+        {
+          "label": "C",
+          "text": "It is murky"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "dark/dim/murky"
+    },
+    {
+      "id": 67,
+      "prompt": "What word means very small?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "The word is tiny"
+        },
+        {
+          "label": "B",
+          "text": "The word is minuscule"
+        },
+        {
+          "label": "C",
+          "text": "The word is miniature"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "tiny/minuscule/miniature"
+    },
+    {
+      "id": 68,
+      "prompt": "What word means to make something better?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "You can improve it"
+        },
+        {
+          "label": "B",
+          "text": "You can enhance it"
+        },
+        {
+          "label": "C",
+          "text": "You can refine it"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "improve/enhance/refine"
+    },
+    {
+      "id": 69,
+      "prompt": "What adjective describes someone who is brave?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "They are courageous"
+        },
+        {
+          "label": "B",
+          "text": "They are valiant"
+        },
+        {
+          "label": "C",
+          "text": "They are bold"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "courageous/valiant/bold"
+    },
+    {
+      "id": 70,
+      "prompt": "What is another word for begin?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "You could say start"
+        },
+        {
+          "label": "B",
+          "text": "You could say commence"
+        },
+        {
+          "label": "C",
+          "text": "You could say initiate"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "start/commence/initiate"
+    },
+    {
+      "id": 71,
+      "prompt": "What does ancient mean?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "It means old"
+        },
+        {
+          "label": "B",
+          "text": "It means aged"
+        },
+        {
+          "label": "C",
+          "text": "It means archaic"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "old/aged/archaic"
+    },
+    {
+      "id": 72,
+      "prompt": "What word means happy?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "The word is joyful"
+        },
+        {
+          "label": "B",
+          "text": "The word is cheerful"
+        },
+        {
+          "label": "C",
+          "text": "The word is elated"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "joyful/cheerful/elated"
+    },
+    {
+      "id": 73,
+      "prompt": "What word means intelligent?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "A good word is clever"
+        },
+        {
+          "label": "B",
+          "text": "A good word is brilliant"
+        },
+        {
+          "label": "C",
+          "text": "A good word is astute"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "clever/brilliant/astute"
+    },
+    {
+      "id": 74,
+      "prompt": "What word means angry?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "The word is furious"
+        },
+        {
+          "label": "B",
+          "text": "The word is irate"
+        },
+        {
+          "label": "C",
+          "text": "The word is livid"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "furious/irate/livid"
+    },
+    {
+      "id": 75,
+      "prompt": "What word means beautiful?",
+      "category": "linguistic",
+      "relationship": "synonym",
+      "prefix_group": "shared",
+      "completions": [
+        {
+          "label": "A",
+          "text": "The word is gorgeous"
+        },
+        {
+          "label": "B",
+          "text": "The word is stunning"
+        },
+        {
+          "label": "C",
+          "text": "The word is exquisite"
+        }
+      ],
+      "expected": null,
+      "pivot_token": "gorgeous/stunning/exquisite"
+    },
+    {
+      "id": 76,
+      "prompt": "Is gold a metal or a nonmetal? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Metal"
+        },
+        {
+          "label": "B",
+          "text": "Nonmetal"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Metal/Nonmetal",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 77,
+      "prompt": "Is Antarctica the coldest or warmest continent? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Coldest"
+        },
+        {
+          "label": "B",
+          "text": "Warmest"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Coldest/Warmest",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 78,
+      "prompt": "Is a snail fast or slow? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Slow"
+        },
+        {
+          "label": "B",
+          "text": "Fast"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Slow/Fast",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 79,
+      "prompt": "Is the Moon larger or smaller than Earth? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Smaller"
+        },
+        {
+          "label": "B",
+          "text": "Larger"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Smaller/Larger",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 80,
+      "prompt": "Is mercury a solid or liquid at room temperature? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Liquid"
+        },
+        {
+          "label": "B",
+          "text": "Solid"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Liquid/Solid",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 81,
+      "prompt": "Is the Amazon River long or short? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Long"
+        },
+        {
+          "label": "B",
+          "text": "Short"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Long/Short",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 82,
+      "prompt": "Is helium heavier or lighter than air? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Lighter"
+        },
+        {
+          "label": "B",
+          "text": "Heavier"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Lighter/Heavier",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 83,
+      "prompt": "Is the Mariana Trench deep or shallow? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Deep"
+        },
+        {
+          "label": "B",
+          "text": "Shallow"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Deep/Shallow",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 84,
+      "prompt": "Is the Sun bright or dim? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Bright"
+        },
+        {
+          "label": "B",
+          "text": "Dim"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Bright/Dim",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 85,
+      "prompt": "Is honey sweet or bitter? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Sweet"
+        },
+        {
+          "label": "B",
+          "text": "Bitter"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Sweet/Bitter",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 86,
+      "prompt": "Is the Nile River natural or artificial? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Natural"
+        },
+        {
+          "label": "B",
+          "text": "Artificial"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Natural/Artificial",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 87,
+      "prompt": "Is the speed of light finite or infinite? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Finite"
+        },
+        {
+          "label": "B",
+          "text": "Infinite"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Finite/Infinite",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 88,
+      "prompt": "Is a blue whale big or small? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Big"
+        },
+        {
+          "label": "B",
+          "text": "Small"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Big/Small",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 89,
+      "prompt": "Is the North Pole in the north or south? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "North"
+        },
+        {
+          "label": "B",
+          "text": "South"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "North/South",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 90,
+      "prompt": "Is steel strong or weak? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Strong"
+        },
+        {
+          "label": "B",
+          "text": "Weak"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Strong/Weak",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 91,
+      "prompt": "Is outer space empty or full? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Empty"
+        },
+        {
+          "label": "B",
+          "text": "Full"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Empty/Full",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 92,
+      "prompt": "Is a cheetah wild or domestic? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Wild"
+        },
+        {
+          "label": "B",
+          "text": "Domestic"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Wild/Domestic",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 93,
+      "prompt": "Is rubber flexible or rigid? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Flexible"
+        },
+        {
+          "label": "B",
+          "text": "Rigid"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Flexible/Rigid",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 94,
+      "prompt": "Is pure water transparent or opaque? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Transparent"
+        },
+        {
+          "label": "B",
+          "text": "Opaque"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Transparent/Opaque",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 95,
+      "prompt": "Is Mount Everest tall or short? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Tall"
+        },
+        {
+          "label": "B",
+          "text": "Short"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Tall/Short",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 96,
+      "prompt": "Is the ocean deep or shallow? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Deep"
+        },
+        {
+          "label": "B",
+          "text": "Shallow"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Deep/Shallow",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 97,
+      "prompt": "Is a feather light or heavy? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Light"
+        },
+        {
+          "label": "B",
+          "text": "Heavy"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Light/Heavy",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 98,
+      "prompt": "Is the Sahara hot or cold? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Hot"
+        },
+        {
+          "label": "B",
+          "text": "Cold"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Hot/Cold",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 99,
+      "prompt": "Is silk smooth or rough? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Smooth"
+        },
+        {
+          "label": "B",
+          "text": "Rough"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Smooth/Rough",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 100,
+      "prompt": "Is a desert dry or wet? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Dry"
+        },
+        {
+          "label": "B",
+          "text": "Wet"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Dry/Wet",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 101,
+      "prompt": "Is the Earth round or flat? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Round"
+        },
+        {
+          "label": "B",
+          "text": "Flat"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Round/Flat",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 102,
+      "prompt": "Is glass brittle or ductile? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Brittle"
+        },
+        {
+          "label": "B",
+          "text": "Ductile"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Brittle/Ductile",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 103,
+      "prompt": "Is a rock alive or dead? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Dead"
+        },
+        {
+          "label": "B",
+          "text": "Alive"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Dead/Alive",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 104,
+      "prompt": "Is nitrogen abundant or rare in Earth's atmosphere? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Abundant"
+        },
+        {
+          "label": "B",
+          "text": "Rare"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Abundant/Rare",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 105,
+      "prompt": "Is the human body mostly solid or liquid? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Liquid"
+        },
+        {
+          "label": "B",
+          "text": "Solid"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Liquid/Solid",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 106,
+      "prompt": "Is a penguin a bird or a mammal? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Bird"
+        },
+        {
+          "label": "B",
+          "text": "Mammal"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Bird/Mammal",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 107,
+      "prompt": "Is sound faster or slower in water than air? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Faster"
+        },
+        {
+          "label": "B",
+          "text": "Slower"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Faster/Slower",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 108,
+      "prompt": "Is a tomato a fruit or vegetable? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Fruit"
+        },
+        {
+          "label": "B",
+          "text": "Vegetable"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Fruit/Vegetable",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 109,
+      "prompt": "Is Mars bigger or smaller than Earth? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Smaller"
+        },
+        {
+          "label": "B",
+          "text": "Bigger"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Smaller/Bigger",
+      "prefix_group": "immediate"
+    },
+    {
+      "id": 110,
+      "prompt": "Is copper a good or bad conductor of electricity? One word.",
+      "category": "factual",
+      "relationship": "antonym",
+      "completions": [
+        {
+          "label": "A",
+          "text": "Good"
+        },
+        {
+          "label": "B",
+          "text": "Bad"
+        }
+      ],
+      "expected": "A",
+      "pivot_token": "Good/Bad",
+      "prefix_group": "immediate"
     }
   ]
 }

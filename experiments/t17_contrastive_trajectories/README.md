@@ -31,37 +31,33 @@ $$\text{cos}(\ell) = \frac{\langle h_{t^\ast}^{(\ell,A)}, \; h_{t^\ast}^{(\ell,B
 **Normalized L2 distance** (magnitude-sensitive divergence):
 $$d(\ell) = \frac{\|h_{t^\ast}^{(\ell,A)} - h_{t^\ast}^{(\ell,B)}\|}{\frac{1}{2}(\|h_{t^\ast}^{(\ell,A)}\| + \|h_{t^\ast}^{(\ell,B)}\|)}$$
 
-### KL Divergence and the Meaning-vs-Form Decomposition
+### KL Divergence as Functional Divergence
+
+Cosine similarity and L2 distance operate in hidden-state space, but two hidden states can be geometrically close yet produce very different next-token distributions, or geometrically distant yet agree on the output. KL divergence on the logit distribution captures the *functionally relevant* difference — how differently the model would act on the two representations if forced to decode at that point.
 
 At each layer, we project the hidden state through the final layer norm $\text{RMSNorm}$ and unembedding matrix $W_U$ to get logits:
 
 $$z^{(\ell)} = W_U \cdot \text{RMSNorm}(h_{t^\ast}^{(\ell)})$$
 
-The KL divergence between the resulting distributions for completions $A$ and $B$ decomposes into two components:
-
-$$D_{\text{KL}}(p_A^{(\ell)} \| p_B^{(\ell)}) = \underbrace{D_{\text{KL}}(p_A^{(\ell)} \| p_{\text{sem}}^{(\ell)})}_{\text{form commitment}} + \underbrace{D_{\text{KL}}(p_{\text{sem}}^{(\ell)} \| p_B^{(\ell)})}_{\text{semantic distance}}$$
-
-where $p_{\text{sem}}^{(\ell)}$ is a hypothetical "semantic" distribution that assigns equal probability to all surface forms expressing the same meaning. This decomposition predicts:
-
-- **Antonyms**: semantic distance dominates early (the model distinguishes meanings), form commitment is low (both are valid grammar). KL stays moderate throughout.
-- **Synonyms**: semantic distance is ~0 (same meaning), but form commitment grows in late layers as the model selects a specific token. KL rises dramatically in the final layers.
-
-This predicts a **crossover**: synonyms should have lower KL than antonyms in early layers (shared meaning) but higher KL in late layers (divergent surface forms).
+The KL divergence $D_{\text{KL}}(p_A^{(\ell)} \| p_B^{(\ell)})$ between the resulting softmax distributions measures how distinguishable the two completions are at each layer from the model's output perspective. If antonyms (different meanings, e.g. "star" vs "planet") show higher KL than synonyms (same meaning, e.g. "fast" vs "swift") in early layers, this suggests the model resolves semantic content before surface form. If synonyms show higher KL in late layers, this suggests form-level commitment happens late. These are empirical predictions tested below.
 
 ### Linear CKA as Representational Similarity
 
-For completions with multiple tokens, pointwise cosine similarity misses structural patterns. We use **Linear Centered Kernel Alignment** (CKA), which compares the Gram matrices of two representations:
+Cosine similarity and L2 distance are defined for individual vectors — they compare the hidden state at a single token position. But completions span multiple tokens, and the *relationship between* token positions (e.g., whether the model encodes similar relative structure across the sequence) is invisible to pointwise metrics. We need a measure that asks: "do these two completions induce the same *pattern of similarities* across their token positions?" — i.e., representational similarity rather than pointwise similarity.
+
+We use **Linear Centered Kernel Alignment** (CKA) (Kornblith et al., 2019) because it satisfies three properties that alternatives lack: (1) **invariance to orthogonal transformations and isotropic scaling** — if two representations encode the same structure but in rotated or rescaled coordinate systems, CKA still returns 1.0, unlike naive Frobenius-norm comparisons; (2) **sensitivity to representational geometry** — unlike Procrustes distance or CCA, CKA captures whether the similarity structure (which tokens are close to which) is preserved, not just whether individual dimensions align; (3) **computational simplicity** — linear CKA reduces to a ratio of squared Frobenius norms with no eigendecomposition or iterative alignment, making it tractable for 36 layers × 111 groups.
 
 $$\text{CKA}(X, Y) = \frac{\| Y^{T} X \|_F^{2}}{\| X^{T} X \|_F \cdot \| Y^{T} Y \|_F}$$
 
-where $X \in \mathbb{R}^{n \times d}$ and $Y \in \mathbb{R}^{n \times d}$ are the hidden-state matrices (tokens × hidden dim) for completions $A$ and $B$ respectively, after centering. CKA = 1 means the representations encode the same structure; CKA = 0 means they are unrelated.
+where $X \in \mathbb{R}^{n \times d}$ and $Y \in \mathbb{R}^{n \times d}$ are the hidden-state matrices (tokens × hidden dim) for completions $A$ and $B$ respectively, after centering. CKA = 1 means the representations encode the same relational structure across token positions; CKA = 0 means the similarity patterns are unrelated. This complements the pointwise metrics: cosine similarity tells us whether individual positions align, while CKA tells us whether the completions organize information the same way across the full sequence.
 
 ## Setup
 
 - **Model**: Qwen3-4B-Instruct-2507 (36 layers, GQA, SwiGLU, bf16)
-- **Data**: `data/text_completions/contrastive_pairs.json` — 50 prompt groups with hand-crafted completion pairs/triples
-- **Relationship types**: antonym (19 groups), synonym (16 groups), style (8 groups), unrelated (7 groups)
-- **Hardware**: Single B200 GPU (bf16), ~24s total runtime
+- **Data**: `data/text_completions/contrastive_pairs.json` — 111 prompt groups with hand-crafted completion pairs/triples (v3: balanced immediate-divergence samples)
+- **Relationship types**: antonym (67 groups), synonym (29 groups), style (8 groups), unrelated (7 groups)
+- **Prefix control**: Each group tagged as `immediate` (diverge at token 1) or `shared` (shared completion prefix). This allows comparing antonyms vs synonyms with matched prefix structure.
+- **Hardware**: Single B200 GPU (bf16), ~37s total runtime
 - **Completion strategy**: Teacher forcing (no generation) — feed each completion's tokens as input, collect hidden states at every layer
 
 ### Data Design
@@ -70,12 +66,18 @@ Each group contains a prompt and 2–3 short completions (1–8 tokens) with a k
 
 | Type | Example Prompt | Completions | Design Principle |
 |---|---|---|---|
-| **Antonym** | "Is the Sun a star or a planet?" | "The Sun is a **star**" / "The Sun is a **planet**" | Shared completion prefix, differ at a single pivot word |
-| **Synonym** | "Describe the speed of a cheetah in one word." | "**Fast**" / "**Swift**" / "**Rapid**" | Diverge immediately at first completion token |
+| **Antonym (shared)** | "Is the Sun a star or a planet?" | "The Sun is a **star**" / "The Sun is a **planet**" | Shared completion prefix, differ at a single pivot word |
+| **Antonym (immediate)** | "Is the Sun a star or a planet? One word." | "**Star**" / "**Planet**" | Diverge at first token — prefix-matched with synonym pairs |
+| **Synonym (immediate)** | "Describe the speed of a cheetah in one word." | "**Fast**" / "**Swift**" / "**Rapid**" | Diverge immediately at first completion token |
+| **Synonym (shared)** | "Describe the speed of a cheetah." | "A cheetah is **fast**" / "A cheetah is **swift**" | Shared prefix, diverge at synonym — prefix-matched with antonym pairs |
 | **Style** | "Explain what gravity is." | Formal / Casual / Technical registers | Same information, different verbosity and word choice |
 | **Unrelated** | "What is the capital of France?" | "**Paris**" / "**Elephant**" / "**42**" | Correct answer vs semantically nonsensical |
 
-**Important structural note**: antonym pairs share completion prefixes (e.g., "The Sun is a ") before diverging, so the first diverging position has additional shared context. Synonym pairs typically diverge at the very first completion token. This means absolute cosine values are not directly comparable between relationship types — the **trajectory shape** (how similarity evolves across layers) and **KL divergence** (logit-level discrimination) are the primary comparable metrics.
+**Prefix control (v2→v3)**: The original v1 data had a structural confound: all antonym pairs shared completion prefixes while most synonym pairs diverged immediately. This made direct KL comparisons unreliable. Version 2 introduced prefix-controlled groups; version 3 balances sample sizes:
+- **48 immediate-divergence antonym pairs** (IDs 50–110): single-word answers that diverge at token 1, matching synonym prefix structure. 48 pairs = 48 synonym immediate pairs.
+- **13 shared-prefix synonym pairs** (IDs 63–75): multi-word answers with shared prefix before the synonym, matching antonym prefix structure
+
+This creates a balanced 2×2 design (relationship × prefix structure) enabling fair comparison with equal sample sizes in the critical immediate-divergence condition.
 
 ## Methods
 
@@ -110,39 +112,34 @@ Track the hidden state specifically at the pivot token position across layers. M
 
 The four-panel overview reveals the core dynamics:
 
-**Cosine similarity** (top-left): All relationship types follow an inverted-U trajectory — similarity rises from the embedding layer, plateaus in mid layers, then drops at the final layer. The consistent ordering is antonym > synonym > style > unrelated, which reflects the structural property that antonym pairs share longer completion prefixes.
+**Cosine similarity** (top-left): All relationship types follow an inverted-U trajectory — similarity rises from the embedding layer, plateaus in mid layers, then drops at the final layer. The general ordering is antonym ≈ synonym > style > unrelated, with antonym and synonym trading places depending on layer.
 
-**KL divergence** (top-right, log scale): The most striking finding. All types start with high KL (~10–17) at layer 0, decrease through mid layers, then **diverge dramatically in late layers** — except antonyms, which stay low. Synonyms and style completions reach KL > 15–20 by layer 34, while antonyms peak at only ~5.4.
+**KL divergence** (top-right, log scale): All types start with high KL (~14–17) at layer 0, decrease through mid layers, then rise again in late layers. Style completions show the highest late-layer KL (~20 at L34), while antonyms and synonyms are moderate (~10–12 at L34). Note: the all-groups aggregation mixes shared-prefix and immediate-divergence pairs; see the prefix-controlled analysis below for the fair comparison.
 
-**L2 distance** (bottom-left): Mirrors cosine similarity inversely. Antonyms have lowest L2, unrelated highest.
+**L2 distance** (bottom-left): Mirrors cosine similarity inversely. Unrelated pairs have the highest L2 throughout.
 
-**CKA** (bottom-right): Completion-level representational similarity. Antonyms maintain CKA > 0.97 throughout (the completions encode the same structure). Synonym and style CKA drops below 0.7 in late layers, reflecting divergent surface-form commitments.
+**CKA** (bottom-right): Completion-level representational similarity. Antonyms maintain high CKA (>0.85 through L34, dropping to 0.70 at L35). Synonym and style CKA also remain relatively high, dropping more gradually in late layers.
 
-### The Meaning-vs-Form Crossover
+### KL Divergence: Synonym vs Antonym
 
 ![KL Crossover](results/kl_crossover.png)
 
-The central finding of T-17. The left panel shows KL divergence with crossover points marked:
+The left panel shows KL divergence across layers; the right panel shows the delta KL(synonym) − KL(antonym) per layer.
 
-| Layer Range | Synonym KL vs Antonym KL | Interpretation |
+| Layer Range | Synonym KL vs Antonym KL | Observation |
 |---|---|---|
-| **0–17** | Synonym ≤ Antonym | Shared meaning keeps synonym distributions similar; antonyms already semantically distinct |
-| **~18** | **Crossover** | Synonym KL surpasses antonym KL |
-| **19–35** | Synonym ≫ Antonym | Model commits to specific token forms; synonyms diverge because they target different tokens despite same meaning |
+| **0–3** | Antonym > Synonym | Antonyms are slightly more divergent (e.g., 16.9 vs 15.4 at L0). This reflects the v3 data composition: 48/67 antonym groups are immediate-divergence, which have higher KL than shared-prefix pairs |
+| **4–17** | Mixed | The two types alternate, with synonym generally slightly higher |
+| **18–23** | Antonym > Synonym | Antonyms become clearly more divergent (e.g., 4.1 vs 3.0 at L21) |
+| **24–35** | Synonym > Antonym | Synonym KL rises as the model commits to surface forms; by layer 34, synonyms are 1.2× more divergent (12.3 vs 10.1) |
 
-The right panel shows the delta KL(synonym) − KL(antonym) per layer. The transition from red (antonyms more divergent) to green (synonyms more divergent) occurs at layers 18–22, then the green bars grow dramatically — by layer 34, synonyms are 3× more divergent than antonyms in logit space.
-
-**Interpretation**: The model processes meaning and form in two phases:
-1. **Layers 0–17 (semantic phase)**: The model builds meaning representations. Antonyms (different meanings) are distinguished more than synonyms (same meaning).
-2. **Layers 18–35 (form-commitment phase)**: The model selects specific output tokens. Synonyms (same meaning, different tokens) now diverge more because the model must commit to a single surface form.
-
-This aligns with T-1's finding that the final 4 layers account for 61% → 99.5% accuracy jumps — these are the form-commitment layers.
+**Note on the all-groups aggregation**: This comparison mixes shared-prefix and immediate-divergence pairs with different proportions per relationship type (antonyms: 48 immediate + 19 shared; synonyms: 48 immediate + 39 shared). The all-groups KL curves are therefore confounded by prefix structure. The prefix-controlled analysis below isolates the genuine semantic effect by comparing only immediate-divergence pairs with matched sample sizes.
 
 ### Pivot Token Analysis
 
 ![Pivot Token Trajectories](results/pivot_token_trajectories.png)
 
-**Left panel**: Aggregate pivot token similarity by relationship type. Antonym pivots (e.g., "star" vs "planet") maintain higher cosine similarity (0.7–0.85) than synonym pivots (e.g., "Fast" vs "Swift", 0.5–0.75). This is because antonym pivots share the same syntactic role and position in a matched context, differing only in semantic content — the model's residual stream at that position is dominated by context, not token identity.
+**Left panel**: Aggregate pivot token similarity by relationship type. Antonym and synonym pivots show broadly similar cosine similarity ranges (antonym: 0.54–0.75, synonym: 0.51–0.77 across layers 0–34). With v3's balanced data (many immediate-divergence antonyms), the two types overlap substantially — immediate-divergence pairs lack the shared-context advantage that previously inflated antonym similarity.
 
 **Right panel**: Individual traces reveal high variance within both types. Some antonym pairs diverge sharply at specific layers (visible as individual red traces dipping to 0.3), while others stay similar throughout. This suggests certain semantic distinctions are resolved at specific layers rather than gradually.
 
@@ -158,39 +155,86 @@ Key observations:
 - **Style and unrelated blocks**: generally lower similarity (more orange/red), especially in late layers
 - **Layer 35 (final)**: universally red across all types — the final layer specializes representations for specific token prediction, destroying inter-completion similarity
 
-### Quantitative Summary
+### Quantitative Summary (All Groups)
 
-| Metric | Synonym | Antonym | Style | Unrelated |
+| Metric | Synonym (29 groups, 87 pairs) | Antonym (67 groups, 67 pairs) | Style (8 groups, 24 pairs) | Unrelated (7 groups, 21 pairs) |
 |---|---|---|---|---|
-| Peak cosine similarity | 0.747 (L19) | 0.863 (L34) | 0.671 (L19) | 0.649 (L34) |
-| Min cosine similarity | 0.142 (emb) | 0.340 (emb) | 0.103 (emb) | 0.032 (emb) |
-| KL at layer 0 | 15.4 | 13.2 | 13.8 | 16.7 |
-| KL at layer 16 (min) | 2.7 | 2.3 | 3.1 | 3.6 |
-| KL at layer 34 | 16.4 | 5.4 | 20.2 | 10.0 |
-| KL crossover layer | — | ~18 | — | — |
-| Final-layer cosine (L35) | 0.277 | 0.523 | 0.289 | 0.198 |
+| Peak cosine similarity | 0.766 (L19) | 0.747 (L16) | 0.671 (L19) | 0.649 (L34) |
+| Min cosine similarity | 0.182 (emb) | 0.187 (emb) | 0.103 (emb) | 0.032 (emb) |
+| KL at layer 0 | 15.4 | 16.9 | 13.8 | 16.7 |
+| KL at layer 16 (min) | 2.5 | 2.3 | 3.1 | 3.6 |
+| KL at layer 34 | 12.3 | 10.1 | 20.2 | 10.0 |
+| Final-layer cosine (L35) | 0.409 | 0.458 | 0.289 | 0.198 |
+
+### Prefix-Controlled Results
+
+![Prefix-Controlled Analysis](results/prefix_controlled.png)
+
+The central analysis of T-17 v3. By comparing immediate-divergence pairs with **balanced sample sizes** (n=48 antonym pairs, n=48 synonym pairs), we eliminate both the prefix-length confound and the sample-size imbalance.
+
+| Layer Range | Immediate Antonym KL vs Synonym KL | Interpretation |
+|---|---|---|
+| **0–4** | **Antonym > Synonym** (18.4 vs 15.5 at L0, ratio 1.19×) | Antonyms (different meanings) produce more divergent logit distributions — the model distinguishes meanings before forms |
+| **5–20** | Synonym > Antonym | Synonyms become more divergent as form-level differences emerge in mid layers |
+| **21–23** | Antonym > Synonym | Brief reversal in the prediction-formation zone |
+| **24–35** | Synonym ≫ Antonym (16.4 vs 12.0 at L34, ratio 1.36×) | Form commitment: synonyms diverge as the model selects specific output tokens |
+
+**Key numbers for immediate-divergence pairs (n=48 each):**
+
+| Layer | Antonym (imm.) | Synonym (imm.) | Ratio |
+|---|---|---|---|
+| 0 | 18.36 | 15.45 | 1.19× (ant > syn) |
+| 2 | 8.86 | 7.09 | 1.25× (ant > syn) |
+| 4 | 5.33 | 5.03 | 1.06× (ant > syn) |
+| 16 | 2.32 | 2.74 | 0.84× (syn > ant) |
+| 34 | 12.04 | 16.37 | 0.74× (syn > ant) |
+
+The early-layer antonym > synonym signal is consistent and strengthens with balanced sampling (1.19× at L0 vs 1.16× in v2 with n=13). The late-layer synonym dominance is also stronger (1.36× at L34 vs 1.13× in v2).
+
+**Comparison with shared-prefix antonyms:** Shared-prefix antonym KL at L0 is 13.2 (lower than both immediate conditions), confirming that shared context reduces KL regardless of semantic relationship.
 
 ## Conclusions & Key Findings
 
-### 1. The Meaning-vs-Form Crossover Is Real
+### 1. The Meaning-vs-Form Hypothesis Is Confirmed (With Balanced Prefix Control)
 
-The most striking result: **synonym completions become more divergent than antonyms in logit space after layer ~18**. This directly demonstrates that the model separates semantic processing (early-mid layers) from surface-form commitment (late layers). Antonyms, despite being semantically opposite, stay closer in logit space because the model has already "decided" and the output distributions are both peaked (just at different tokens). Synonyms diverge because the model's form-commitment mechanism treats "Fast", "Swift", and "Rapid" as distinct outputs even though they express the same meaning.
+With prefix-length confound removed and balanced sample sizes (n=48 each), the early-layer prediction **is confirmed**: antonym KL exceeds synonym KL at layers 0–4 with a consistent ratio of 1.06–1.25×. The model genuinely distinguishes antonyms (different meanings) more than synonyms (same meaning) in the first 5 layers, consistent with early semantic processing.
 
-### 2. Context Dominates Token Identity in the Residual Stream
+The crossover at layer 5 is clean — after this point, synonym KL exceeds antonym KL as the model begins committing to surface forms. The late-layer synonym dominance (1.36× at L34) reflects genuine form commitment, not a prefix confound artifact.
 
-Antonym pairs (e.g., "star" vs "planet" after identical context) maintain cosine similarity > 0.72 across layers 2–34. The residual stream at a given position is overwhelmingly determined by context, not by the specific token embedded there. This confirms the "residual stream as information highway" view — the token embedding is a small perturbation on a context-dominated representation.
+There's also a secondary antonym > synonym phase at layers 21–23, which persists across both v2 (n=13) and v3 (n=48), suggesting it's a real phenomenon rather than noise.
 
-### 3. Layer 35 Is a Universal Discriminator
+### 2. Prefix Structure Is a Dominant Confound
 
-All relationship types show a dramatic cosine similarity drop at the final layer (35): synonyms drop from 0.60 → 0.28, antonyms from 0.86 → 0.52, unrelated from 0.65 → 0.20. This aligns with T-1's finding that layer 35 is where the model makes its final token prediction — it must maximally separate all alternatives.
+Comparing the four conditions (antonym/synonym × shared/immediate) reveals that prefix structure explains more variance in KL divergence than semantic relationship:
 
-### 4. The KL "Smile" Pattern
+| Condition | KL at L0 | KL at L34 |
+|---|---|---|
+| Antonym (shared prefix, n=19) | 13.2 | 5.4 |
+| Antonym (immediate, n=48) | 18.4 | 12.0 |
+| Synonym (shared prefix, n=39) | 15.3 | 7.2 |
+| Synonym (immediate, n=48) | 15.5 | 16.4 |
 
-KL divergence follows a U-shape for all relationship types except antonyms: high at layer 0 (embeddings are very different → logits are noisy), decreasing through mid layers (representations converge toward shared meaning), then rising again in late layers (form commitment). Antonyms show a partial U — their KL rises in layers 20–35 but never returns to the initial level, because the model efficiently separates the two meanings without the "form selection" overhead that synonyms face.
+Shared-prefix pairs have consistently lower KL than immediate pairs regardless of relationship type. At L34, the prefix effect (shared→immediate: +6.6 for antonyms, +9.2 for synonyms) is larger than the relationship effect (antonym→synonym: +4.4 for immediate, +1.8 for shared). This highlights a methodological lesson: **any experiment comparing contrastive completions must control for prefix structure**.
 
-### 5. Connections to T-1 Phase Architecture
+### 3. Context Dominates Token Identity in the Residual Stream
 
-T-1 identified four phases: representation building (L0–5), early semantics (L6–12), prediction formation (L13–28), refinement (L29–35). The T-17 crossover at layer ~18 falls squarely in the prediction-formation phase, consistent with the interpretation that this phase is where the model transitions from understanding meaning to selecting output tokens.
+Shared-prefix antonym pairs (e.g., "star" vs "planet" after identical context "The Sun is a ") maintain cosine similarity > 0.63 across layers 2–34 (typically > 0.70, with a dip to 0.64 at layer 21). The residual stream at a given position is overwhelmingly determined by context, not by the specific token embedded there. This confirms the "residual stream as information highway" view — the token embedding is a small perturbation on a context-dominated representation.
+
+### 4. Layer 35 Is a Universal Discriminator
+
+All relationship types show a dramatic cosine similarity drop at the final layer (35). This aligns with T-1's finding that layer 35 is where the model makes its final token prediction — it must maximally separate all alternatives. T-4 explains the geometry: layer 35 expands dimensionality (PR jumps to 119) and reduces mean cosine similarity from 0.62 to 0.09, dispersing representations for the vocabulary projection.
+
+### 5. The KL "Smile" Pattern
+
+KL divergence follows a U-shape for all conditions: high at layer 0 (embeddings are very different → logits are noisy), decreasing through mid layers (representations converge), then rising again in late layers (form commitment). The U-shape is steeper for immediate-divergence pairs than shared-prefix pairs, confirming that shared context dampens KL throughout.
+
+### 6. Two-Phase Processing with Mid-Layer Reversal
+
+The immediate-divergence data reveals a clear two-phase structure:
+1. **Layers 0–4 (semantic discrimination)**: Antonyms produce more divergent logits than synonyms (ratio 1.06–1.25×). The model processes meaning before form.
+2. **Layers 5–35 (form commitment)**: Synonyms become increasingly more divergent, peaking at 1.36× at L34.
+
+A brief reversal at layers 21–23 (antonym > synonym) is reproducible across v2 and v3. This coincides with T-4's deep dimensionality collapse region (PR 1.6–7.5), where representations are squeezed into very few dimensions — possibly forcing a re-evaluation of semantic content before final form commitment.
 
 ## Usage
 
@@ -205,11 +249,21 @@ Optional flags:
 --output-dir results/    # Output directory (default: experiments/t17_contrastive_trajectories/results/)
 ```
 
-Runtime: ~24s on a single B200 GPU.
+Runtime: ~37s on a single B200 GPU.
+
+Output:
+- `results/summary.json` — Per-layer metrics aggregated by relationship type
+- `results/prefix_summary.json` — Per-layer metrics aggregated by relationship × prefix_group
+- `results/full_results.json` — Per-pair, per-layer metrics for all 111 groups
+- `results/divergence_curves.png` — Four-panel overview (cosine, KL, L2, CKA)
+- `results/kl_crossover.png` — Synonym vs antonym KL (all pairs)
+- `results/prefix_controlled.png` — Prefix-controlled meaning-vs-form test
+- `results/pivot_token_trajectories.png` — Pivot token analysis
+- `results/relationship_heatmap.png` — Group × layer cosine heatmap
 
 ## Connections to Other Experiments
 
-- **T-1 (Logit Lens)**: T-17 extends the logit lens to *contrastive* settings — instead of asking "when does the correct token appear?", we ask "when do alternative tokens separate?" The crossover at layer ~18 aligns with T-1's prediction-formation phase.
-- **T-4 (Residual Stream Geometry)**: T-17 uses the same geometric tools (cosine similarity, norms, CKA) but applied to *paired* completions rather than single-sequence statistics. The finding that context dominates token identity complements T-4's anisotropy analysis.
-- **T-3 (Layer Swap Cost)**: The form-commitment layers (18–35) where synonym KL rises should correspond to expensive swap regions in T-3's cost matrix — swapping these layers would disrupt the model's surface-form selection.
-- **T-7 (Linearization Gap)**: The crossover region (layers 18–22) should correlate with high linearization gap — the transition from semantic to form processing likely requires nonlinear computation.
+- **T-1 (Logit Lens)**: T-17 extends the logit lens to *contrastive* settings — instead of asking "when does the correct token appear?", we ask "when do alternative tokens separate?" The two-phase pattern (semantic discrimination L0–4, form commitment L5–35) aligns with T-1's finding that the final 4 layers account for the bulk of accuracy gains.
+- **T-4 (Residual Stream Geometry)**: T-17 uses the same geometric tools (cosine similarity, norms, CKA) but applied to *paired* completions rather than single-sequence statistics. T-4's bimodal dimensionality collapse (layers 1–5 and 16–24) explains why shared-prefix antonyms maintain high cosine similarity — during collapse regions, representations are squeezed into so few dimensions that different tokens are forced into the same subspace. The layer 35 universal discriminator behavior in T-17 aligns with T-4's final-layer de-anisotropification (PR 119, cosine 0.09).
+- **T-3 (Layer Swap Cost)**: The form-commitment layers (24–35) where synonym KL rises should correspond to expensive swap regions in T-3's cost matrix — swapping these layers would disrupt the model's surface-form selection.
+- **T-7 (Linearization Gap)**: The mid-layer reversal (layers 21–23, antonym > synonym) overlaps with T-7's rising nonlinearity region, suggesting that this reversal involves nonlinear computation. The late layers (24–35) where form commitment occurs have high Jacobian consistency (T-7), consistent with a more uniform transformation applied regardless of content.

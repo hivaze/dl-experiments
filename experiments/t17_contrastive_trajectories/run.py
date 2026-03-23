@@ -632,15 +632,125 @@ def plot_kl_crossover(summary, results_dir):
         ax.grid(True, alpha=0.3, axis="y")
 
     plt.suptitle(
-        "T-17: The Meaning-vs-Form Crossover\n"
-        "Early layers: antonyms have higher KL (semantic discrimination). "
-        "Late layers: synonyms have higher KL (surface-form commitment).",
+        "T-17: KL Divergence — Synonym vs Antonym\n"
+        "All pairs (prefix structure not controlled)",
         fontsize=12, fontweight="bold",
     )
     plt.tight_layout()
     plt.savefig(results_dir / "kl_crossover.png", dpi=200, bbox_inches="tight")
     plt.close()
     print(f"  Saved kl_crossover.png")
+
+
+def plot_prefix_controlled(prefix_summary, results_dir):
+    """Plot prefix-controlled KL comparison: immediate-antonym vs immediate-synonym
+    and shared-antonym vs shared-synonym."""
+    import matplotlib.pyplot as plt
+    import matplotlib
+    matplotlib.use("Agg")
+
+    colors = {
+        "synonym_immediate": "#2ecc71",
+        "antonym_immediate": "#e74c3c",
+        "synonym_shared": "#27ae60",
+        "antonym_shared": "#c0392b",
+    }
+    linestyles = {
+        "synonym_immediate": "-",
+        "antonym_immediate": "-",
+        "synonym_shared": "--",
+        "antonym_shared": "--",
+    }
+    labels = {
+        "synonym_immediate": "synonym (immediate divergence)",
+        "antonym_immediate": "antonym (immediate divergence)",
+        "synonym_shared": "synonym (shared prefix)",
+        "antonym_shared": "antonym (shared prefix)",
+    }
+
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+
+    # --- Panel 1: All four conditions KL ---
+    ax = axes[0]
+    for key in ["antonym_immediate", "synonym_immediate", "antonym_shared", "synonym_shared"]:
+        if key not in prefix_summary:
+            continue
+        stats = prefix_summary[key]
+        layers = [s["layer"] for s in stats if s["kl_divergence_mean"] is not None]
+        kls = [s["kl_divergence_mean"] for s in stats if s["kl_divergence_mean"] is not None]
+        if layers:
+            ax.plot(layers, kls, color=colors[key], linestyle=linestyles[key],
+                    label=labels[key], linewidth=2)
+    ax.set_xlabel("Layer")
+    ax.set_ylabel("KL Divergence")
+    ax.set_title("KL Divergence by Relationship × Prefix Group")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    # --- Panel 2: Immediate divergence only (prefix-controlled comparison) ---
+    ax = axes[1]
+    for key in ["antonym_immediate", "synonym_immediate"]:
+        if key not in prefix_summary:
+            continue
+        stats = prefix_summary[key]
+        layers = [s["layer"] for s in stats if s["kl_divergence_mean"] is not None]
+        kls = [s["kl_divergence_mean"] for s in stats if s["kl_divergence_mean"] is not None]
+        kl_stds = [s["kl_divergence_std"] for s in stats if s["kl_divergence_std"] is not None]
+        if layers:
+            kls_arr = np.array(kls)
+            stds_arr = np.array(kl_stds)
+            ax.plot(layers, kls_arr, color=colors[key], label=labels[key], linewidth=2)
+            ax.fill_between(layers, np.maximum(kls_arr - stds_arr, 0), kls_arr + stds_arr,
+                            color=colors[key], alpha=0.12)
+
+    # Mark crossover points
+    if "synonym_immediate" in prefix_summary and "antonym_immediate" in prefix_summary:
+        syn_kl = {s["layer"]: s["kl_divergence_mean"] for s in prefix_summary["synonym_immediate"]
+                  if s["kl_divergence_mean"] is not None}
+        ant_kl = {s["layer"]: s["kl_divergence_mean"] for s in prefix_summary["antonym_immediate"]
+                  if s["kl_divergence_mean"] is not None}
+        common_layers = sorted(set(syn_kl) & set(ant_kl))
+        prev_diff = None
+        for layer in common_layers:
+            diff = syn_kl[layer] - ant_kl[layer]
+            if prev_diff is not None and prev_diff * diff < 0:
+                ax.axvline(x=layer, color="purple", linestyle="--", alpha=0.6,
+                           linewidth=1.5, label=f"crossover ~L{layer}")
+            prev_diff = diff
+
+    ax.set_xlabel("Layer")
+    ax.set_ylabel("KL Divergence")
+    ax.set_title("Prefix-Controlled: Immediate Divergence Only\n(fair comparison — both diverge at token 1)")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    # --- Panel 3: Delta bar chart for immediate-divergence pairs ---
+    ax = axes[2]
+    if "synonym_immediate" in prefix_summary and "antonym_immediate" in prefix_summary:
+        syn_kl = {s["layer"]: s["kl_divergence_mean"] for s in prefix_summary["synonym_immediate"]
+                  if s["kl_divergence_mean"] is not None}
+        ant_kl = {s["layer"]: s["kl_divergence_mean"] for s in prefix_summary["antonym_immediate"]
+                  if s["kl_divergence_mean"] is not None}
+        common_layers = sorted(set(syn_kl) & set(ant_kl))
+        deltas = [syn_kl[l] - ant_kl[l] for l in common_layers]
+        ax.bar(common_layers, deltas,
+               color=["#e74c3c" if d < 0 else "#2ecc71" for d in deltas],
+               alpha=0.7, width=0.8)
+        ax.axhline(y=0, color="black", linewidth=1)
+    ax.set_xlabel("Layer")
+    ax.set_ylabel("KL(synonym) − KL(antonym)")
+    ax.set_title("Prefix-Controlled Delta\n(green = synonyms more divergent, red = antonyms)")
+    ax.grid(True, alpha=0.3, axis="y")
+
+    plt.suptitle(
+        "T-17: Prefix-Controlled Meaning-vs-Form Test\n"
+        "Comparing synonym vs antonym pairs with matched prefix structure",
+        fontsize=13, fontweight="bold",
+    )
+    plt.tight_layout()
+    plt.savefig(results_dir / "prefix_controlled.png", dpi=200, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved prefix_controlled.png")
 
 
 # ============================================================================
@@ -739,10 +849,12 @@ def main():
             if pivot is not None:
                 pivot_data[relationship].append(pivot)
 
+        prefix_group = group.get("prefix_group", "unknown")
         all_results.append({
             "group_id": group_id,
             "prompt": prompt,
             "relationship": relationship,
+            "prefix_group": prefix_group,
             "completions": [c["text"] for c in completions],
             "pairs": pair_results,
         })
@@ -792,6 +904,37 @@ def main():
             })
         summary_stats[rel] = layer_stats
 
+    # ---- Aggregate by relationship × prefix_group ----
+    print("\nAggregating by relationship × prefix_group...")
+    prefix_summary_raw = defaultdict(lambda: defaultdict(list))
+
+    for result in all_results:
+        key = f"{result['relationship']}_{result['prefix_group']}"
+        for pair in result["pairs"]:
+            for lm in pair["layer_metrics"]:
+                prefix_summary_raw[key][lm["layer"]].append(lm)
+
+    prefix_summary_stats = {}
+    for key, layers in prefix_summary_raw.items():
+        layer_stats = []
+        for layer in sorted(layers.keys()):
+            metrics = layers[layer]
+            cos_div = [m["cosine_diverging"] for m in metrics]
+            kl_vals = [m["kl_divergence"] for m in metrics if m["kl_divergence"] is not None]
+            layer_stats.append({
+                "layer": layer,
+                "n_pairs": len(metrics),
+                "cosine_diverging_mean": float(np.mean(cos_div)),
+                "cosine_diverging_std": float(np.std(cos_div)),
+                "kl_divergence_mean": float(np.mean(kl_vals)) if kl_vals else None,
+                "kl_divergence_std": float(np.std(kl_vals)) if kl_vals else None,
+            })
+        prefix_summary_stats[key] = layer_stats
+
+    for key, stats in prefix_summary_stats.items():
+        n = stats[0]["n_pairs"] if stats else 0
+        print(f"  {key}: {n} pairs")
+
     # ---- Save results ----
     print("\nSaving results...")
 
@@ -802,6 +945,7 @@ def main():
             "group_id": result["group_id"],
             "prompt": result["prompt"],
             "relationship": result["relationship"],
+            "prefix_group": result["prefix_group"],
             "completions": result["completions"],
             "pairs": [{
                 "label_a": p["label_a"],
@@ -819,12 +963,17 @@ def main():
         json.dump(summary_stats, f, indent=2)
     print(f"  Saved summary.json")
 
+    with open(results_dir / "prefix_summary.json", "w") as f:
+        json.dump(prefix_summary_stats, f, indent=2)
+    print(f"  Saved prefix_summary.json")
+
     # ---- Visualizations ----
     print("\nGenerating visualizations...")
     plot_divergence_curves(summary_stats, results_dir)
     plot_pivot_trajectories(pivot_data, results_dir)
     plot_relationship_heatmap(all_results, results_dir)
     plot_kl_crossover(summary_stats, results_dir)
+    plot_prefix_controlled(prefix_summary_stats, results_dir)
 
     # ---- Print key findings ----
     print("\n" + "=" * 70)
@@ -855,6 +1004,40 @@ def main():
                         break
             if onset is not None:
                 print(f"    Divergence onset (< synonym - 2σ): layer {onset}")
+
+    # ---- Prefix-controlled findings ----
+    print("\n" + "=" * 70)
+    print("PREFIX-CONTROLLED ANALYSIS")
+    print("=" * 70)
+    if "synonym_immediate" in prefix_summary_stats and "antonym_immediate" in prefix_summary_stats:
+        syn_kl = {s["layer"]: s["kl_divergence_mean"] for s in prefix_summary_stats["synonym_immediate"]
+                  if s["kl_divergence_mean"] is not None}
+        ant_kl = {s["layer"]: s["kl_divergence_mean"] for s in prefix_summary_stats["antonym_immediate"]
+                  if s["kl_divergence_mean"] is not None}
+        common_layers = sorted(set(syn_kl) & set(ant_kl))
+        n_syn_higher = sum(1 for l in common_layers if syn_kl[l] > ant_kl[l])
+        n_ant_higher = sum(1 for l in common_layers if ant_kl[l] > syn_kl[l])
+        print(f"\n  Immediate-divergence pairs (both diverge at token 1):")
+        print(f"    Layers where synonym KL > antonym KL: {n_syn_higher}/{len(common_layers)}")
+        print(f"    Layers where antonym KL > synonym KL: {n_ant_higher}/{len(common_layers)}")
+
+        # Check for crossovers
+        prev_diff = None
+        crossovers = []
+        for layer in common_layers:
+            diff = syn_kl[layer] - ant_kl[layer]
+            if prev_diff is not None and prev_diff * diff < 0:
+                crossovers.append(layer)
+            prev_diff = diff
+        if crossovers:
+            print(f"    Crossover points: layers {crossovers}")
+        else:
+            print(f"    No crossover points found")
+
+        # KL at key layers
+        for l in [0, 16, 34]:
+            if l in syn_kl and l in ant_kl:
+                print(f"    L{l}: synonym={syn_kl[l]:.2f}, antonym={ant_kl[l]:.2f}, ratio={syn_kl[l]/ant_kl[l]:.2f}x")
 
     t_total = time.time() - t_start
     print(f"\nTotal runtime: {t_total:.1f}s")

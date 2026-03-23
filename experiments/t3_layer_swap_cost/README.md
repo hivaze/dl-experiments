@@ -24,6 +24,14 @@ Analysis includes per-layer average swap cost, distance dependence, hierarchical
 
 ## Results
 
+### Swap cost heatmap
+
+![Swap cost heatmap](results/swap_cost_heatmap.png)
+
+![Swap cost heatmap (log scale)](results/swap_cost_heatmap_log.png)
+
+![Swap cost percentage change](results/swap_cost_pct_change.png)
+
 ### Most costly swaps
 
 | Swap | Δ Loss | Loss |
@@ -61,6 +69,8 @@ The cheapest swaps are exclusively **adjacent late-middle pairs** (layers 25–3
 | Middle | 7–30 | 2.5–3.7 |
 | Late | 31–34 | 3.2–6.8 |
 
+![Per-layer average swap cost](results/per_layer_avg_swap_cost.png)
+
 The U-shape persists but is much steeper: the most sensitive layers (0–2, 35) have 4x the swap cost of the middle layers (vs 3x with prompt-token loss). Layer 2 is now the most position-sensitive (avg cost 11.15), surpassing even layer 35 (10.36).
 
 ### Swap cost vs layer distance
@@ -73,9 +83,13 @@ The U-shape persists but is much steeper: the most sensitive layers (0–2, 35) 
 | \|i−j\| = 20 | +7.29 | 84.1x |
 | \|i−j\| = 35 | +22.83 | 261x |
 
+![Swap cost vs layer distance](results/swap_cost_vs_distance.png)
+
 Even adjacent swaps (distance 1) cause a 7.5x average loss increase — the model is extremely sensitive to layer ordering.
 
 ### Hierarchical clustering (Ward linkage)
+
+![Hierarchical clustering dendrogram](results/swap_cost_dendrogram.png)
 
 With 4 clusters:
 | Cluster | Layers | Role |

@@ -30,9 +30,12 @@ A collection of deep learning research experiments focused on transformer model 
 
 See [TODO.md](TODO.md) for the full research agenda:
 
-- **T-5 to T-16**: Text-only transformer analysis — cross-model layer transplant, layer doubling, neuron census, attention phase transitions, attention kernel benchmarks, normalization analysis, activation function survey, and more.
-- **D-1 to D-6**: Diffusion-inspired experiments — depth-as-denoising, noise injection/recovery, iterative refinement, flow matching.
-- **VL-1 to VL-8**: Vision-language model experiments (Qwen3-VL-2B-Instruct) — modality gap, visual token redundancy, hallucination localization.
+- **T-5, T-6, T-8**: Architecture surgery — cross-model layer transplant, layer doubling/iteration, thinking vs answer token routing.
+- **T-10a/b**: Attention architecture survey & kernel benchmarks — comparative study of MHA, GQA, MLA, DeltaNet, Mamba2, RWKV-7, sparse attention, and hybrid designs; GPU kernel microbenchmarks (FA2/3/4, FlashInfer, Triton, SageAttention3).
+- **T-11 to T-14**: Inference & systems — quantization methods, CUDA graphs & torch.compile, KV-cache optimization, NIXL & disaggregated inference.
+- **T-15, T-16**: Component analysis — normalization layer analysis & replacement, activation function survey & ablation.
+- **D-1 to D-6**: Diffusion-inspired experiments — depth-as-denoising, noise injection/recovery, iterative refinement, flow matching, AR as discrete denoiser, textual diffusion from scratch.
+- **VL-1 to VL-8**: Vision-language model experiments (Qwen3-VL-2B-Instruct) — modality gap, visual token redundancy, hallucination localization, bottleneck analysis, representation decoding, modality-specific criticality, cross-modal interference, VLM layer shuffle.
 
 ## Evaluation Data
 

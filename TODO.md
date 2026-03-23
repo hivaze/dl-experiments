@@ -52,7 +52,7 @@ Compute SVD of each weight matrix (Q, K, V, O, gate, up, down) per layer. How mu
 
 ### T-17. Contrastive Completion Trajectories ✅ [completed](experiments/t17_contrastive_trajectories/)
 For each prompt, force-decode semantically related completions (synonyms, antonyms, style variants, unrelated) and track how their hidden-state representations diverge or converge layer-by-layer.
-- **Data**: hand-crafted contrastive pairs (`data/text_completions/contrastive_pairs.json`) — 50 groups across 4 relationship types (antonym, synonym, style, unrelated). No model inference needed for data.
+- **Data**: hand-crafted contrastive pairs (`data/text_completions/contrastive_pairs.json`) — 111 groups (v3) across 4 relationship types with prefix control (immediate vs shared divergence). V3 balances sample sizes: 48 immediate-antonym pairs matching 48 immediate-synonym pairs for fair comparison.
 - **Contrastive logit lens**: at each layer, project residual stream through LM head and compare logit distributions (KL divergence, rank of alternative tokens) between paired completions.
 - **Representational similarity**: cosine similarity, normalized L2, and linear CKA of hidden states between completions at each layer. Do synonyms converge? Do antonyms diverge? At what depth?
 - **Pivot token tracking**: for antonym/synonym pairs that differ at a single "pivot" token, track that specific token's representation across layers to find the commitment point.

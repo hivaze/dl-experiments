@@ -18,7 +18,7 @@ How much of their theoretical capacity do transformer weight matrices actually u
 - **Hardware**: NVIDIA B200, CUDA 12.8
 - **Precision**: bf16 for model storage, float32 for SVD computation (numerical stability)
 - **Analysis**: Full SVD via `torch.linalg.svdvals()` on all 7 weight matrices x 36 layers = 252 SVDs
-- **Runtime**: ~83 seconds
+- **Runtime**: ~80 seconds
 
 ### Weight Matrix Dimensions
 
@@ -188,13 +188,13 @@ where $n_p = 17$ (plateau layers), $n_l = 19$ (late layers), and the degrees of 
 
 | Matrix | Eff Rank Ratio | Power-Law $\alpha$ | $R^2$ | Rank for 90% Energy |
 |--------|---------------|-----------------|-----|---------------------|
-| q_proj | 0.2535 | 0.616 +/- 0.051 | 0.766 | ~1370 |
-| k_proj | 0.3756 | 0.548 +/- 0.058 | 0.751 | ~640 |
-| v_proj | 0.6101 | 0.403 +/- 0.056 | 0.689 | ~720 |
-| o_proj | 0.4225 | 0.561 +/- 0.041 | 0.719 | ~1380 |
-| gate_proj | 0.4984 | 0.353 +/- 0.058 | 0.768 | ~1450 |
-| up_proj | 0.6836 | 0.309 +/- 0.054 | 0.694 | ~1730 |
-| down_proj | 0.6390 | 0.322 +/- 0.033 | 0.709 | ~1670 |
+| q_proj | 0.2535 | 0.616 +/- 0.051 | 0.766 | ~1240 |
+| k_proj | 0.3756 | 0.548 +/- 0.058 | 0.751 | ~550 |
+| v_proj | 0.6101 | 0.403 +/- 0.056 | 0.689 | ~650 |
+| o_proj | 0.4225 | 0.561 +/- 0.041 | 0.719 | ~1340 |
+| gate_proj | 0.4984 | 0.353 +/- 0.058 | 0.768 | ~1750 |
+| up_proj | 0.6836 | 0.309 +/- 0.054 | 0.694 | ~1810 |
+| down_proj | 0.6390 | 0.322 +/- 0.033 | 0.709 | ~1800 |
 
 **Rank ordering** (most to least compressible): q_proj (0.25) < k_proj (0.38) < o_proj (0.42) < gate_proj (0.50) < v_proj (0.61) < down_proj (0.64) < up_proj (0.68)
 
@@ -267,25 +267,27 @@ Representative spectra for layers 0, 1, 9, 17, 25, and 35 showing the decay patt
 
 ![T-2 Cross-Reference](results/crossref_t2_criticality.png)
 
-Overall correlation: **r = -0.188, p = 0.27** (not significant). However, per-matrix analysis reveals a significant relationship for **k_proj** (r = -0.398, p = 0.016): layers with lower K-projection rank tend to be more critical when knocked out. This is counterintuitive — it suggests that layers where routing is most constrained (low-rank K) are also the hardest to remove, possibly because they implement highly specific, non-redundant attention patterns.
+Overall correlation: **r = -0.186, p = 0.28** (not significant). However, per-matrix analysis reveals a significant relationship for **k_proj** (r = -0.401, p = 0.015): layers with lower K-projection rank tend to be more critical when knocked out. This is counterintuitive — it suggests that layers where routing is most constrained (low-rank K) are also the hardest to remove, possibly because they implement highly specific, non-redundant attention patterns.
 
 | Matrix | r | p |
 |--------|------|------|
-| k_proj | **-0.398** | **0.016** |
-| up_proj | -0.274 | 0.106 |
-| q_proj | -0.268 | 0.114 |
-| o_proj | -0.188 | 0.271 |
-| gate_proj | -0.133 | 0.441 |
-| v_proj | 0.090 | 0.603 |
-| down_proj | 0.034 | 0.845 |
+| k_proj | **-0.401** | **0.015** |
+| q_proj | -0.273 | 0.107 |
+| up_proj | -0.270 | 0.111 |
+| o_proj | -0.186 | 0.277 |
+| gate_proj | -0.128 | 0.457 |
+| v_proj | 0.091 | 0.599 |
+| down_proj | 0.036 | 0.833 |
 
 **Interpretation:** The negative correlation for K suggests a "specialization-criticality tradeoff": layers that compress their key space into fewer dimensions are performing more unique computations that cannot be compensated by other layers. Conversely, layers with high K-rank (many attention patterns) are more redundant and easier to remove.
+
+**Update from T-7 Method 7 (Layer Replacement):** T-2's linear surrogate experiment adds another dimension: low-rank replacements (rank 64, 256) substantially underperform full-rank — even for layers whose full-rank linear replacement works well (early layers 0-3 and late layers 32-33, 35 at 87-99% recovery; layer 34 is a notable exception at -45%). Rank-256 achieves partial recovery for a few layers (up to ~77% for layers 0, 2, 6) but falls far short of full-rank replacement everywhere. This confirms that despite low Q/K effective rank ratios, the *aggregate* layer computation requires near-full rank to approximate linearly. The low effective rank of individual matrices (especially Q at 0.25) does not translate to a low-rank layer-level computation because the composition of attention routing + value extraction + MLP involves interactions across all dimensions.
 
 #### T-7 Linearization Gap
 
 ![T-7 Cross-Reference](results/crossref_t7_linearization.png)
 
-Correlation: **r = -0.419, p = 0.011** (significant). Higher effective rank associates with *lower* linearization gap (more linear behavior).
+Correlation: **r = -0.43, p = 0.009** (significant). Higher effective rank associates with *lower* linearization gap (more linear behavior).
 
 **Why this is surprising:** Naively, high-rank = more complex computation = more nonlinear. But the data suggests the opposite. The explanation lies in how nonlinearity interacts with dimensionality:
 
@@ -294,7 +296,7 @@ Correlation: **r = -0.419, p = 0.011** (significant). Higher effective rank asso
 
 Formally, if a layer applies $n$ independent nonlinear channels with gain $\epsilon$ each, the aggregate nonlinearity scales as $O(1/\sqrt{n})$ by CLT-type averaging, while the aggregate linear part scales as $O(1)$. So higher $n$ (rank) means more linear aggregate behavior.
 
-**Critical refinement — the correlation is MLP-driven, not attention:** Per-matrix analysis reveals that the rank-linearity relationship is entirely concentrated in MLP matrices: up_proj (r = -0.75, p < 0.001), down_proj (r = -0.48, p = 0.003), gate_proj (r = -0.46, p = 0.005). All four attention projections (Q, K, V, O) show r ≈ 0 with the linearization gap. This means the self-averaging explanation applies specifically to the SwiGLU MLP, not to softmax attention — nonlinearity at the layer level is primarily determined by the MLP's spectral structure.
+**Critical refinement — the correlation is MLP-driven, not attention:** Per-matrix analysis reveals that the rank-linearity relationship is entirely concentrated in MLP matrices: up_proj (r = -0.74, p < 0.001), down_proj (r = -0.49, p = 0.003), gate_proj (r = -0.48, p = 0.003). All four attention projections (Q, K, V, O) show r ≈ 0 with the linearization gap. This means the self-averaging explanation applies specifically to the SwiGLU MLP, not to softmax attention — nonlinearity at the layer level is primarily determined by the MLP's spectral structure.
 
 #### T-4 Representation Geometry
 
@@ -315,9 +317,9 @@ Weight spectral structure does not significantly predict representation geometry
 
 4. **Moderate power-law decay in two regimes**: Attention routing matrices ($\alpha \sim 0.55\text{--}0.62$) decay faster than MLP/value matrices ($\alpha \sim 0.31\text{--}0.40$). $R^2 \sim 0.7$ indicates approximate but not perfect power-law behavior — the true distribution is likely MP-bulk + spiked outliers.
 
-5. **K-projection rank anticorrelates with layer criticality**: Layers with lower K-rank are harder to knock out (r = -0.40, p = 0.016). Constrained routing creates specialized, non-redundant computations.
+5. **K-projection rank anticorrelates with layer criticality**: Layers with lower K-rank are harder to knock out (r = -0.40, p = 0.015). Constrained routing creates specialized, non-redundant computations.
 
-6. **High-rank layers are more linear — and the effect is MLP-specific**: Weight effective rank anticorrelates with T-7 linearization gap (r = -0.42, p = 0.011), but the relationship decomposes entirely into MLP matrices (up: r = -0.75, down: r = -0.48, gate: r = -0.46) while all attention projections show r ≈ 0. High-rank MLP layers spread computation across many dimensions where self-averaging makes the aggregate more linear (CLT-type effect). Layer-level nonlinearity is primarily determined by MLP spectral structure.
+6. **High-rank layers are more linear — and the effect is MLP-specific**: Weight effective rank anticorrelates with T-7 linearization gap (r = -0.43, p = 0.009), but the relationship decomposes entirely into MLP matrices (up: r = -0.74, down: r = -0.49, gate: r = -0.48) while all attention projections show r ≈ 0. High-rank MLP layers spread computation across many dimensions where self-averaging makes the aggregate more linear (CLT-type effect). Layer-level nonlinearity is primarily determined by MLP spectral structure.
 
 7. **Layer 1 MLP anomaly**: The entire layer 1 MLP is degenerate — both down_proj (eff rank 341) and gate_proj (315) are severely compressed, with the two lowest effective rank ratios in the model (0.13 and 0.12 respectively).
 
@@ -336,7 +338,7 @@ Weight spectral structure does not significantly predict representation geometry
 6. **down_proj (0.64)** — MLP down-projection high-rank
 7. **up_proj (0.68)** — Least compressible, needs most capacity
 
-**Quantitative LoRA rank guidance:** For a matrix with effective rank ratio $\rho$, the rank needed for 90% energy capture is approximately $r_{90} \sim \rho \cdot \text{max\_rank}$. For q_proj: $r_{90} \sim 0.25 \times 2560 \sim 640$. For up_proj: $r_{90} \sim 0.68 \times 2560 \sim 1740$. Standard LoRA uses ranks 4-64, which is far below even q_proj's $r_{90}$ — this works because LoRA only needs to capture the *task-specific delta*, not the full pre-trained weight.
+**Quantitative LoRA rank guidance:** The rank needed for 90% energy capture varies by matrix type. For q_proj: $r_{90} \sim 1240$ (out of max rank 2560). For up_proj: $r_{90} \sim 1810$. Standard LoRA uses ranks 4-64, which is far below even q_proj's $r_{90}$ — this works because LoRA only needs to capture the *task-specific delta*, not the full pre-trained weight.
 
 **Stable rank provides a more conservative bound:** Stable rank ratios are dramatically lower than effective rank ratios (7-36% of effective rank), with gate_proj most extreme (stable rank only 7.5% of effective rank, i.e., ~0.038 ratio vs 0.50 effective rank ratio). This means energy is heavily concentrated in the top singular value. For rank selection based on actual energy distribution rather than participation ratio, stable rank suggests much smaller ranks may suffice: gate_proj stable rank ≈ 97 (vs effective rank 1276).
 
@@ -352,13 +354,13 @@ Uniform-rank LoRA wastes parameters on redundant plateau layers and under-fits c
 
 ### Static Factorization
 
-**3. Low-rank factorization of Q/K.** Q uses only 25% and K only 38% of effective rank — the most compressible matrices. Factoring $\mathbf{W}_q = \mathbf{A}\mathbf{B}$ with rank $r \sim 640$ (vs 2560) halves Q compute; for K, $r \sim 400$ captures 90% of energy (vs max rank 1024). This is a static SVD-based decomposition applicable directly at inference with no retraining.
+**3. Low-rank factorization of Q/K.** Q uses only 25% and K only 38% of effective rank — the most compressible matrices. Factoring $\mathbf{W}_q = \mathbf{A}\mathbf{B}$ with rank $r \sim 1240$ (vs 2560) captures 90% of energy; for K, $r \sim 550$ captures 90% (vs max rank 1024). This is a static SVD-based decomposition applicable directly at inference with no retraining.
 
 **4. Multi-head pruning via Q-redundancy.** 32 query heads with only 25% effective rank means heavy redundancy. Plateau layers (Q eff rank ratio 0.23) are the best pruning targets — fewer heads with minimal impact on output quality.
 
 ### Pruning Guidance
 
-**5. K-rank as a pruning signal.** Layers with high K-rank are more redundant and safer to remove (see conclusion #5). This aligns with T-7: redundant, linear, and non-critical layers are the same layers.
+**5. K-rank as a pruning signal.** Layers with high K-rank are more redundant and safer to remove (see conclusion #5). This aligns with T-7: redundant, linear, and non-critical layers are the same layers. Note from T-7 Method 7: while these layers can be *removed* (low knockout damage), they cannot be cheaply *replaced* by a low-rank linear map — the full layer computation requires near-full rank even though individual K/Q matrices are low-rank. Pruning (full removal) is viable; low-rank factored replacement is not.
 
 **6. Do not compress layers 0, 33-35.** These carry load-bearing nonlinear computation (see conclusions #7, Key Finding 4). Additionally, layers 34-35 show unexpected up_proj rank compression (0.60→0.52 vs ~0.68 average), suggesting specialized output-preparation computation. K-proj at layer 5 has κ = 2424 (vs mean ~106) — compression there risks amplifying numerical instability.
 
@@ -373,7 +375,7 @@ Depth-varying: the Q-rank jump at layer 24→25 (see Key Finding 4) motivates wi
 ### Convergent Evidence
 
 - **T-7 (Linearization Gap)**: Plateau layers are both low-rank and near-linear, making them doubly suitable for compression (see cross-reference above)
-- **T-2 (Layer Knockout)**: Low K-rank predicts high criticality (see cross-reference above); plateau layers have low criticality overall
+- **T-2 (Layer Knockout)**: Low K-rank predicts high criticality (see cross-reference above); plateau layers have low criticality overall. T-7 Method 7 shows that per-matrix low effective rank (Q at 0.25, K at 0.38) does not enable low-rank layer replacement — the layer's aggregate computation requires near-full rank even when individual components are compressible
 - **T-3 (Layer Swap Cost)**: Adjacent plateau layers have cheap swap costs, consistent with low Q-rank making them interchangeable
 
 ## Usage
@@ -382,7 +384,7 @@ Depth-varying: the Q-rank jump at layer 24→25 (see Key Finding 4) motivates wi
 poetry run python experiments/t9_weight_spectral_structure/run.py
 ```
 
-No prerequisites needed — analysis works directly on model weights without calibration data. Cross-references T-2, T-4, and T-7 results if available. Takes ~83 seconds on B200.
+No prerequisites needed — analysis works directly on model weights without calibration data. Cross-references T-2, T-4, and T-7 results if available. Takes ~80 seconds on B200.
 
 Results in `experiments/t9_weight_spectral_structure/results/`:
 

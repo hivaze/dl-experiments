@@ -3,16 +3,13 @@ Layer Knockout / Criticality Mapping (T-2)
 ==========================================
 Skip each layer one at a time (and pairs) and measure loss degradation.
 Loss is computed on pre-generated calibration completions (completion tokens
-only), loaded from data/calibration/completions.json.
+only), loaded from data/text_completions/.
 
 Key questions:
   1. Are there "critical" layers whose removal is catastrophic vs "redundant"
      ones with minimal impact?
-  2. Is criticality correlated with weight norm?
-  3. Do critical layers cluster or distribute uniformly?
-  4. Can you remove N layers while keeping loss below some threshold?
-  5. Is the "causal bottleneck" (activation patching) the same as the "most
-     critical" layer from knockout?
+  2. Do critical layers cluster or distribute uniformly?
+  3. Can you remove N layers while keeping loss below some threshold?
 """
 
 import json
@@ -20,8 +17,6 @@ import time
 import random
 import itertools
 from pathlib import Path
-from collections import defaultdict
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -37,19 +32,6 @@ SEED = 42
 DEVICE = "cuda:1"
 RESULTS_DIR = Path(__file__).parent / "results"
 CALIBRATION_PATH = Path(__file__).parents[2] / "data" / "text_completions" / "qwen3-4b-instruct-2507" / "completions.json"
-
-# Activation patching prompts — factual/linguistic/arithmetic with known answers
-PATCHING_PROMPTS = [
-    {"prompt": "The capital of France is", "subject": "France", "target": " Paris", "type": "factual"},
-    {"prompt": "The largest ocean on Earth is the", "subject": "ocean on Earth", "target": " Pacific", "type": "factual"},
-    {"prompt": "The element with atomic number 79 is", "subject": "atomic number 79", "target": " gold", "type": "factual"},
-    {"prompt": "The square root of 144 is", "subject": "square root of 144", "target": " 12", "type": "arithmetic"},
-    {"prompt": "If a train travels 120 km in 2 hours, its speed is", "subject": "120 km in 2 hours", "target": " 60", "type": "arithmetic"},
-    {"prompt": "The quick brown fox jumps over the lazy", "subject": "fox jumps over", "target": " dog", "type": "linguistic"},
-    {"prompt": "Time flies like an arrow, fruit flies like a", "subject": "fruit flies like", "target": " banana", "type": "linguistic"},
-    {"prompt": "The horse raced past the barn", "subject": "horse raced past", "target": " fell", "type": "linguistic"},
-]
-
 
 # ============================================================================
 # Utilities
@@ -90,14 +72,8 @@ def compute_loss(model, tokenizer, calibration_data, device):
             continue
         with torch.no_grad():
             outputs = model(**tokens, use_cache=False)
-        # Shift logits and labels for next-token prediction
-        logits = outputs.logits[:, :-1, :]   # (1, seq_len-1, vocab)
-        targets = input_ids[:, 1:]            # (1, seq_len-1)
-        # Only compute loss on completion positions:
-        # target at position i corresponds to predicting token i+1 from token i.
-        # Completion tokens start at index prompt_token_count, so we want
-        # targets from index (prompt_token_count - 1) onward (predicting
-        # the first completion token) through the end.
+        logits = outputs.logits[:, :-1, :]
+        targets = input_ids[:, 1:]
         start = max(prompt_token_count - 1, 0)
         comp_logits = logits[:, start:, :]
         comp_targets = targets[:, start:]
@@ -108,18 +84,6 @@ def compute_loss(model, tokenizer, calibration_data, device):
         total_loss += loss.item()
         total_tokens += comp_targets.numel()
     return total_loss / total_tokens if total_tokens > 0 else float("inf")
-
-
-def compute_weight_norms(model, num_layers):
-    """Compute Frobenius norm of all weights per layer."""
-    norms = {}
-    for i in range(num_layers):
-        layer = model.model.layers[i]
-        total_norm = 0.0
-        for p in layer.parameters():
-            total_norm += p.data.float().norm().item() ** 2
-        norms[i] = total_norm ** 0.5
-    return norms
 
 
 # ============================================================================
@@ -325,219 +289,11 @@ def run_greedy_pruning(model, tokenizer, num_layers, single_results, calibration
 
 
 # ============================================================================
-# Part 4: Weight Norm vs Criticality Correlation
+# Visualization
 # ============================================================================
 
-def analyze_weight_norm_correlation(single_results, weight_norms, num_layers):
-    """Compute correlation between layer criticality and weight norm."""
-    print("\n" + "=" * 70)
-    print("PART 4: Weight Norm vs Criticality Correlation")
-    print("=" * 70)
-
-    deltas = [single_results["knockouts"][i]["loss_delta"] for i in range(num_layers)]
-    norms = [weight_norms[i] for i in range(num_layers)]
-
-    from scipy.stats import spearmanr, pearsonr
-
-    pearson_r, pearson_p = pearsonr(deltas, norms)
-    spearman_r, spearman_p = spearmanr(deltas, norms)
-
-    print(f"  Pearson r={pearson_r:.4f} (p={pearson_p:.4e})")
-    print(f"  Spearman ρ={spearman_r:.4f} (p={spearman_p:.4e})")
-
-    results = {
-        "pearson_r": pearson_r,
-        "pearson_p": pearson_p,
-        "spearman_r": spearman_r,
-        "spearman_p": spearman_p,
-        "per_layer": {
-            i: {"loss_delta": deltas[i], "weight_norm": norms[i]}
-            for i in range(num_layers)
-        },
-    }
-
-    return results
-
-
-# ============================================================================
-# Part 5: Activation Patching (Causal Bottleneck)
-# ============================================================================
-
-def run_activation_patching(model, tokenizer, num_layers):
-    """Causal tracing: corrupt subject tokens' embeddings, then restore
-    clean hidden states at individual (layer, last-subject-position) to
-    find where factual associations are stored."""
-    print("\n" + "=" * 70)
-    print("PART 5: Activation Patching / Causal Tracing")
-    print("=" * 70)
-
-    results = {"per_prompt": [], "per_type": defaultdict(list)}
-    noise_level = 3.0
-
-    for pinfo in tqdm(PATCHING_PROMPTS, desc="Activation patching"):
-        prompt = pinfo["prompt"]
-        target_str = pinfo["target"]
-        subject_str = pinfo["subject"]
-        prompt_type = pinfo["type"]
-
-        # Use raw tokenization for patching
-        tokens = tokenizer(prompt, return_tensors="pt").to(DEVICE)
-        input_ids = tokens["input_ids"]
-        target_ids = tokenizer(target_str, add_special_tokens=False,
-                               return_tensors="pt")["input_ids"][0]
-        if len(target_ids) == 0:
-            continue
-        target_id = target_ids[0].item()
-
-        # Find subject token positions
-        subject_tokens = tokenizer(subject_str, add_special_tokens=False,
-                                   return_tensors="pt")["input_ids"][0]
-        subject_positions = []
-        for start in range(len(input_ids[0]) - len(subject_tokens) + 1):
-            if all(input_ids[0, start + j] == subject_tokens[j]
-                   for j in range(len(subject_tokens))):
-                subject_positions = list(range(start, start + len(subject_tokens)))
-                break
-        if not subject_positions:
-            n = input_ids.shape[1]
-            subject_positions = list(range(n // 3, 2 * n // 3))
-        last_subject_pos = subject_positions[-1]
-
-        # Step 1: Clean run
-        clean_states = {}
-
-        def make_capture_hook(layer_idx):
-            def hook_fn(module, input, output):
-                if isinstance(output, tuple):
-                    clean_states[layer_idx] = output[0].detach().clone()
-                else:
-                    clean_states[layer_idx] = output.detach().clone()
-            return hook_fn
-
-        hooks = []
-        for i in range(num_layers):
-            h = model.model.layers[i].register_forward_hook(make_capture_hook(i))
-            hooks.append(h)
-
-        with torch.no_grad():
-            clean_out = model(**tokens, use_cache=False)
-        clean_logits = clean_out.logits[0, -1, :]
-        clean_prob = F.softmax(clean_logits.float(), dim=-1)[target_id].item()
-        clean_rank = (clean_logits > clean_logits[target_id]).sum().item()
-
-        for h in hooks:
-            h.remove()
-
-        # Step 2: Corrupted embeddings
-        with torch.no_grad():
-            clean_embed = model.model.embed_tokens(input_ids).detach().clone()
-            embed_std = clean_embed.std().item()
-            corrupted_embed = clean_embed.clone()
-            noise = torch.randn_like(corrupted_embed[:, subject_positions, :])
-            corrupted_embed[:, subject_positions, :] += noise_level * embed_std * noise
-
-        # Step 3: Fully corrupted run
-        with torch.no_grad():
-            orig_embed_forward = model.model.embed_tokens.forward
-            model.model.embed_tokens.forward = lambda x: corrupted_embed
-            corrupt_out = model(**tokens, use_cache=False)
-            model.model.embed_tokens.forward = orig_embed_forward
-        corrupt_logits = corrupt_out.logits[0, -1, :]
-        corrupt_prob = F.softmax(corrupt_logits.float(), dim=-1)[target_id].item()
-        corrupt_rank = (corrupt_logits > corrupt_logits[target_id]).sum().item()
-
-        # Step 4: Restore clean state at each layer
-        layer_recoveries = []
-
-        for restore_layer in range(num_layers):
-            def make_patch_hook(layer_idx, clean_activation, pos):
-                def hook_fn(module, input, output):
-                    if isinstance(output, tuple):
-                        patched = output[0].clone()
-                        patched[0, pos, :] = clean_activation[0, pos, :]
-                        return (patched,) + output[1:]
-                    else:
-                        patched = output.clone()
-                        patched[0, pos, :] = clean_activation[0, pos, :]
-                        return patched
-                return hook_fn
-
-            h = model.model.layers[restore_layer].register_forward_hook(
-                make_patch_hook(restore_layer, clean_states[restore_layer],
-                                last_subject_pos)
-            )
-
-            with torch.no_grad():
-                orig_embed_forward = model.model.embed_tokens.forward
-                model.model.embed_tokens.forward = lambda x: corrupted_embed
-                patched_out = model(**tokens, use_cache=False)
-                model.model.embed_tokens.forward = orig_embed_forward
-
-            h.remove()
-
-            patched_logits = patched_out.logits[0, -1, :]
-            patched_prob = F.softmax(patched_logits.float(), dim=-1)[target_id].item()
-            patched_rank = (patched_logits > patched_logits[target_id]).sum().item()
-
-            denom = clean_prob - corrupt_prob
-            if abs(denom) > 1e-10:
-                recovery = (patched_prob - corrupt_prob) / denom
-            else:
-                recovery = 0.0
-
-            layer_recoveries.append({
-                "layer": restore_layer,
-                "patched_prob": patched_prob,
-                "patched_rank": patched_rank,
-                "recovery_ratio": recovery,
-            })
-
-        prompt_result = {
-            "prompt": prompt,
-            "target": target_str,
-            "subject": subject_str,
-            "type": prompt_type,
-            "subject_positions": subject_positions,
-            "last_subject_pos": last_subject_pos,
-            "clean_prob": clean_prob,
-            "clean_rank": clean_rank,
-            "corrupt_prob": corrupt_prob,
-            "corrupt_rank": corrupt_rank,
-            "layer_recoveries": layer_recoveries,
-        }
-        results["per_prompt"].append(prompt_result)
-
-        best_layer = max(layer_recoveries, key=lambda x: x["recovery_ratio"])
-        print(f"  '{prompt}' → '{target_str}': "
-              f"bottleneck=L{best_layer['layer']} "
-              f"(recovery={best_layer['recovery_ratio']:.3f})")
-
-    # Aggregate by type
-    type_bottlenecks = defaultdict(list)
-    for pr in results["per_prompt"]:
-        best = max(pr["layer_recoveries"], key=lambda x: x["recovery_ratio"])
-        type_bottlenecks[pr["type"]].append(best["layer"])
-
-    results["type_bottlenecks"] = {}
-    print("\n--- Causal Bottleneck by Prompt Type ---")
-    for ptype, layers in sorted(type_bottlenecks.items()):
-        mean_layer = np.mean(layers)
-        results["type_bottlenecks"][ptype] = {
-            "mean_bottleneck_layer": float(mean_layer),
-            "bottleneck_layers": layers,
-        }
-        print(f"  {ptype}: mean bottleneck layer = {mean_layer:.1f} (layers: {layers})")
-
-    return results
-
-
-# ============================================================================
-# Visualization (Enhanced)
-# ============================================================================
-
-def create_plots(single_results, pair_results, pruning_results,
-                 norm_correlation, patching_results, weight_norms, num_layers):
-    """Generate enhanced visualization plots."""
+def create_plots(single_results, pair_results, pruning_results, num_layers):
+    """Generate visualization plots for Parts 1-3."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -556,25 +312,22 @@ def create_plots(single_results, pair_results, pruning_results,
 
     layers = list(range(num_layers))
     model_short = MODEL_NAME.split("/")[-1]
-
-    # =========================================================================
-    # Plot 1: Single knockout criticality profile (4-panel, enhanced)
-    # =========================================================================
-    fig, axes = plt.subplots(2, 2, figsize=(18, 13))
-
     deltas = [single_results["knockouts"][i]["loss_delta"] for i in layers]
-    norms_list = [weight_norms[i] for i in layers]
+
+    # =========================================================================
+    # Plot 1: Single knockout criticality profile (2-panel)
+    # =========================================================================
+    fig, axes = plt.subplots(1, 2, figsize=(18, 7))
 
     # Panel 1: Loss delta with gradient coloring
-    ax = axes[0, 0]
+    ax = axes[0]
     norm_deltas = np.array(deltas)
     colors = plt.cm.RdYlBu_r((norm_deltas - norm_deltas.min()) /
                                (norm_deltas.max() - norm_deltas.min() + 1e-10))
-    bars = ax.bar(layers, deltas, color=colors, alpha=0.85, edgecolor="white", linewidth=0.5)
+    ax.bar(layers, deltas, color=colors, alpha=0.85, edgecolor="white", linewidth=0.5)
     ax.axhline(y=0, color="black", linewidth=0.8)
     ax.axhline(y=np.mean(deltas), color="red", linestyle="--", alpha=0.5,
                label=f"mean={np.mean(deltas):.3f}")
-    # Annotate extremes
     top3 = sorted(range(num_layers), key=lambda i: deltas[i], reverse=True)[:3]
     bot3 = sorted(range(num_layers), key=lambda i: deltas[i])[:3]
     for idx in top3:
@@ -588,42 +341,8 @@ def create_plots(single_results, pair_results, pruning_results,
     ax.set_title("Single Layer Knockout: Loss Impact")
     ax.legend(fontsize=9)
 
-    # Panel 2: Loss ratio with threshold lines
-    ratios = [single_results["knockouts"][i]["loss_ratio"] for i in layers]
-    ax = axes[0, 1]
-    ax.plot(layers, ratios, "-o", color="#1976D2", markersize=4, linewidth=1.5)
-    ax.axhline(y=1.0, color="green", linestyle="--", alpha=0.5, label="baseline (1.0x)")
-    ax.axhline(y=1.1, color="orange", linestyle="--", alpha=0.5, label="1.1x threshold")
-    ax.axhline(y=2.0, color="red", linestyle="--", alpha=0.5, label="2.0x threshold")
-    ax.fill_between(layers, 1.0, ratios, where=[r < 1.0 for r in ratios],
-                     alpha=0.2, color="green", label="Removal improves loss")
-    ax.set_xlabel("Layer")
-    ax.set_ylabel("Loss Ratio (knockout / baseline)")
-    ax.set_title("Loss Ratio by Layer")
-    ax.legend(fontsize=8, loc="upper left")
-
-    # Panel 3: Weight norm vs criticality with regression line
-    ax = axes[1, 0]
-    scatter = ax.scatter(norms_list, deltas, c=layers, cmap="viridis", s=60, alpha=0.8,
-                         edgecolors="white", linewidth=0.5)
-    # Add regression line
-    z = np.polyfit(norms_list, deltas, 1)
-    p = np.poly1d(z)
-    x_line = np.linspace(min(norms_list), max(norms_list), 100)
-    ax.plot(x_line, p(x_line), "--", color="red", alpha=0.5, linewidth=1.5)
-    for i in layers:
-        if deltas[i] > np.mean(deltas) + 1.5 * np.std(deltas) or \
-           deltas[i] < np.mean(deltas) - np.std(deltas):
-            ax.annotate(str(i), (norms_list[i], deltas[i]), fontsize=8,
-                        ha="center", va="bottom")
-    r = norm_correlation["pearson_r"]
-    ax.set_xlabel("Weight Norm (Frobenius)")
-    ax.set_ylabel("Loss Delta (criticality)")
-    ax.set_title(f"Weight Norm vs Criticality (r={r:.3f})")
-    plt.colorbar(scatter, ax=ax, label="Layer index", shrink=0.8)
-
-    # Panel 4: Ranked criticality with regions
-    ax = axes[1, 1]
+    # Panel 2: Ranked criticality
+    ax = axes[1]
     sorted_idx = sorted(layers, key=lambda i: deltas[i], reverse=True)
     sorted_deltas = [deltas[i] for i in sorted_idx]
     bar_colors = ["#D32F2F" if i < 5 else "#1976D2" if i >= num_layers - 5
@@ -644,7 +363,7 @@ def create_plots(single_results, pair_results, pruning_results,
     plt.close()
 
     # =========================================================================
-    # Plot 2: Pair knockout heatmaps (enhanced with seaborn)
+    # Plot 2: Pair knockout heatmaps
     # =========================================================================
     fig, axes = plt.subplots(1, 2, figsize=(20, 9))
 
@@ -684,7 +403,7 @@ def create_plots(single_results, pair_results, pruning_results,
     plt.close()
 
     # =========================================================================
-    # Plot 3: Greedy pruning curve (enhanced)
+    # Plot 3: Greedy pruning curve
     # =========================================================================
     fig, axes = plt.subplots(1, 2, figsize=(18, 7))
 
@@ -692,7 +411,6 @@ def create_plots(single_results, pair_results, pruning_results,
     losses = pruning_results["losses_after_removal"]
     baseline = pruning_results["baseline_loss"]
 
-    # Left: loss curve
     ax = axes[0]
     ax.fill_between(n_removed, baseline, losses, where=[l > baseline for l in losses],
                      alpha=0.15, color="red")
@@ -712,7 +430,6 @@ def create_plots(single_results, pair_results, pruning_results,
     ax.set_title("Greedy Pruning: Loss Trajectory")
     ax.legend(fontsize=9)
 
-    # Right: percentage change
     ax = axes[1]
     pct_changes = [(l / baseline - 1) * 100 for l in losses]
     colors = ["#4CAF50" if p <= 0 else "#FF9800" if p < 10 else "#E53935" for p in pct_changes]
@@ -729,62 +446,6 @@ def create_plots(single_results, pair_results, pruning_results,
                  fontsize=14, fontweight="bold", y=1.01)
     plt.tight_layout()
     plt.savefig(RESULTS_DIR / "greedy_pruning_curve.png", dpi=150, bbox_inches="tight")
-    plt.close()
-
-    # =========================================================================
-    # Plot 4: Activation patching (enhanced)
-    # =========================================================================
-    fig, axes = plt.subplots(1, 2, figsize=(18, 7))
-
-    type_colors = {"factual": "#1976D2", "arithmetic": "#D32F2F", "linguistic": "#388E3C"}
-
-    # Left: recovery curves
-    ax = axes[0]
-    type_avg_recovery = defaultdict(lambda: np.zeros(num_layers))
-    type_counts = defaultdict(int)
-    for pr in patching_results["per_prompt"]:
-        recoveries = [lr["recovery_ratio"] for lr in pr["layer_recoveries"]]
-        color = type_colors.get(pr["type"], "gray")
-        ax.plot(layers, recoveries, "-", alpha=0.3, color=color, linewidth=1)
-        type_avg_recovery[pr["type"]] += np.array(recoveries)
-        type_counts[pr["type"]] += 1
-    for ptype in type_avg_recovery:
-        avg = type_avg_recovery[ptype] / type_counts[ptype]
-        color = type_colors.get(ptype, "gray")
-        ax.plot(layers, avg, "-o", color=color, linewidth=2.5, markersize=4,
-                label=f"{ptype} avg (n={type_counts[ptype]})")
-    ax.set_xlabel("Layer")
-    ax.set_ylabel("Recovery Ratio")
-    ax.set_title("Activation Patching: Recovery by Layer")
-    ax.axhline(y=1.0, color="black", linestyle="--", alpha=0.3, label="Full recovery")
-    ax.axhline(y=0.0, color="gray", linestyle="--", alpha=0.3)
-    ax.legend(fontsize=8)
-
-    # Right: knockout vs patching comparison
-    ax = axes[1]
-    knockout_deltas = [single_results["knockouts"][i]["loss_delta"] for i in layers]
-    avg_recovery = np.zeros(num_layers)
-    for pr in patching_results["per_prompt"]:
-        for lr in pr["layer_recoveries"]:
-            avg_recovery[lr["layer"]] += lr["recovery_ratio"]
-    avg_recovery /= len(patching_results["per_prompt"])
-
-    ax2 = ax.twinx()
-    ax.bar(layers, knockout_deltas, alpha=0.4, color="#FF7043", label="Knockout Δloss",
-           edgecolor="white", linewidth=0.5)
-    ax2.plot(layers, avg_recovery, "-o", color="#1976D2", markersize=4, linewidth=2,
-             label="Patching recovery")
-    ax.set_xlabel("Layer")
-    ax.set_ylabel("Knockout Loss Delta", color="#FF7043")
-    ax2.set_ylabel("Mean Patching Recovery", color="#1976D2")
-    ax.set_title("Knockout vs Patching")
-    ax.legend(loc="upper left", fontsize=9)
-    ax2.legend(loc="upper right", fontsize=9)
-
-    fig.suptitle(f"Causal Tracing — {model_short}",
-                 fontsize=14, fontweight="bold", y=1.01)
-    plt.tight_layout()
-    plt.savefig(RESULTS_DIR / "activation_patching.png", dpi=150, bbox_inches="tight")
     plt.close()
 
     print(f"Plots saved to {RESULTS_DIR}/")
@@ -817,11 +478,6 @@ def main():
     print("\nLoading calibration data...")
     calibration_data = load_calibration_data()
 
-    print("\nComputing weight norms...")
-    weight_norms = compute_weight_norms(model, num_layers)
-    for i in range(num_layers):
-        print(f"  Layer {i:2d}: norm={weight_norms[i]:.2f}")
-
     # Part 1: Single knockouts
     t1 = time.time()
     single_results = run_single_knockouts(model, tokenizer, num_layers, calibration_data)
@@ -838,46 +494,27 @@ def main():
     t4 = time.time()
     print(f"Greedy pruning time: {t4 - t3:.1f}s")
 
-    # Part 4: Weight norm correlation
-    norm_results = analyze_weight_norm_correlation(single_results, weight_norms,
-                                                  num_layers)
-    t5 = time.time()
-
-    # Part 5: Activation patching
-    patching_results = run_activation_patching(model, tokenizer, num_layers)
-    t6 = time.time()
-    print(f"Activation patching time: {t6 - t5:.1f}s")
-
     # Generate plots
     print("\nGenerating plots...")
-    create_plots(single_results, pair_results, pruning_results,
-                 norm_results, patching_results, weight_norms, num_layers)
+    create_plots(single_results, pair_results, pruning_results, num_layers)
 
-    # Save all results
+    # Save results
     all_results = {
         "config": {
             "model": MODEL_NAME,
             "num_layers": num_layers,
             "num_calibration_entries": len(calibration_data),
             "calibration_source": str(CALIBRATION_PATH),
-            "num_patching_prompts": len(PATCHING_PROMPTS),
             "seed": SEED,
         },
         "single_knockouts": single_results,
         "pair_knockouts": pair_results,
         "pruning": pruning_results,
-        "weight_norm_correlation": norm_results,
-        "activation_patching": {
-            "per_prompt": patching_results["per_prompt"],
-            "type_bottlenecks": patching_results.get("type_bottlenecks", {}),
-        },
-        "weight_norms": weight_norms,
         "timing": {
             "load_s": t_load - t_start,
             "single_knockout_s": t2 - t1,
             "pair_knockout_s": t3 - t2,
             "pruning_s": t4 - t3,
-            "patching_s": t6 - t5,
             "total_s": time.time() - t_start,
         },
     }

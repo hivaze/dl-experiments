@@ -2872,7 +2872,7 @@
           0.290228,
           0.050226
         ],
-        "compute_time_s": 0.373
+        "compute_time_s": 0.374
       },
       "up_proj": {
         "shape": [
@@ -3588,7 +3588,7 @@
           0.195518,
           0.096841
         ],
-        "compute_time_s": 0.352
+        "compute_time_s": 0.351
       },
       "k_proj": {
         "shape": [
@@ -4064,7 +4064,7 @@
           0.31627,
           0.23965
         ],
-        "compute_time_s": 0.063
+        "compute_time_s": 0.064
       },
       "o_proj": {
         "shape": [
@@ -4302,7 +4302,7 @@
           0.226905,
           0.209511
         ],
-        "compute_time_s": 0.352
+        "compute_time_s": 0.353
       },
       "gate_proj": {
         "shape": [
@@ -6684,7 +6684,7 @@
           0.691409,
           0.498309
         ],
-        "compute_time_s": 0.367
+        "compute_time_s": 0.368
       }
     },
     "4": {
@@ -9306,7 +9306,7 @@
           0.228217,
           0.210849
         ],
-        "compute_time_s": 0.353
+        "compute_time_s": 0.354
       },
       "gate_proj": {
         "shape": [
@@ -10020,7 +10020,7 @@
           0.827196,
           0.494906
         ],
-        "compute_time_s": 0.364
+        "compute_time_s": 0.365
       }
     },
     "6": {
@@ -14072,7 +14072,7 @@
           0.404904,
           0.35958
         ],
-        "compute_time_s": 0.064
+        "compute_time_s": 0.065
       },
       "o_proj": {
         "shape": [
@@ -15978,7 +15978,7 @@
           0.204576,
           0.138592
         ],
-        "compute_time_s": 0.354
+        "compute_time_s": 0.355
       },
       "gate_proj": {
         "shape": [
@@ -16216,7 +16216,7 @@
           0.900457,
           0.192786
         ],
-        "compute_time_s": 0.371
+        "compute_time_s": 0.37
       },
       "up_proj": {
         "shape": [
@@ -19790,7 +19790,7 @@
           0.749789,
           0.399592
         ],
-        "compute_time_s": 0.361
+        "compute_time_s": 0.362
       },
       "down_proj": {
         "shape": [
@@ -24794,7 +24794,7 @@
           0.728038,
           0.271952
         ],
-        "compute_time_s": 0.364
+        "compute_time_s": 0.363
       },
       "down_proj": {
         "shape": [
@@ -26224,7 +26224,7 @@
           0.753803,
           0.323831
         ],
-        "compute_time_s": 0.368
+        "compute_time_s": 0.369
       },
       "up_proj": {
         "shape": [
@@ -26940,7 +26940,7 @@
           0.175788,
           0.106563
         ],
-        "compute_time_s": 0.347
+        "compute_time_s": 0.348
       },
       "k_proj": {
         "shape": [
@@ -29798,7 +29798,7 @@
           0.741764,
           0.242588
         ],
-        "compute_time_s": 0.366
+        "compute_time_s": 0.367
       },
       "down_proj": {
         "shape": [
@@ -32182,7 +32182,7 @@
           0.100126,
           0.082991
         ],
-        "compute_time_s": 0.062
+        "compute_time_s": 0.063
       },
       "v_proj": {
         "shape": [
@@ -33134,7 +33134,7 @@
           0.718451,
           0.212626
         ],
-        "compute_time_s": 0.367
+        "compute_time_s": 0.368
       },
       "down_proj": {
         "shape": [
@@ -39806,7 +39806,7 @@
           0.707248,
           0.193127
         ],
-        "compute_time_s": 0.363
+        "compute_time_s": 0.364
       },
       "down_proj": {
         "shape": [
@@ -42666,7 +42666,7 @@
           0.255944,
           0.228563
         ],
-        "compute_time_s": 0.345
+        "compute_time_s": 0.346
       },
       "gate_proj": {
         "shape": [
@@ -46478,7 +46478,7 @@
           0.752977,
           0.185477
         ],
-        "compute_time_s": 0.362
+        "compute_time_s": 0.363
       },
       "down_proj": {
         "shape": [
@@ -50292,7 +50292,7 @@
           0.227753,
           0.140127
         ],
-        "compute_time_s": 0.349
+        "compute_time_s": 0.35
       },
       "k_proj": {
         "shape": [
@@ -53628,7 +53628,7 @@
           0.206177,
           0.08735
         ],
-        "compute_time_s": 0.347
+        "compute_time_s": 0.348
       },
       "k_proj": {
         "shape": [
@@ -59108,7 +59108,7 @@
           0.443077,
           0.255054
         ],
-        "compute_time_s": 0.065
+        "compute_time_s": 0.064
       },
       "o_proj": {
         "shape": [
@@ -59584,7 +59584,7 @@
           0.845564,
           0.178963
         ],
-        "compute_time_s": 0.368
+        "compute_time_s": 0.369
       },
       "up_proj": {
         "shape": [
@@ -60239,12 +60239,12 @@
       }
     },
     "crossref_t2": {
-      "pearson_r": -0.1879,
-      "p_value": 0.272546
+      "pearson_r": -0.1855,
+      "p_value": 0.278668
     }
   },
   "timing": {
     "analysis_s": 69.4,
-    "total_s": 79.5
+    "total_s": 79.4
   }
 }
