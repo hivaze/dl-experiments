@@ -263,6 +263,62 @@ Combining T-4 with other experiments reveals a coherent geometric processing pip
 5. **Layers 25–34 — Output preparation**: Partial recovery to 10–78 dimensions with dramatic norm growth (139→568). High Jacobian consistency for layers 29+ (0.76–0.88, T-7) — a more uniform, input-independent transformation. Mostly linearizable (L32–33 at 87–88%, T-7), though L34 is a notable exception (−45%). Cheapest swap region (T-3). Late-layer gate\_proj rank increases (T-9).
 6. **Layer 35 — De-anisotropification**: Disperses representations (PR 119, cosine 0.09, norm ↓ to 391) and maximally separates semantic categories (separation 1.03). Universal discriminator (T-17). MLP-driven nonlinearity (gap 0.24, T-7). Achieves 99.5% top-1 accuracy (T-1).
 
+## Practical & Architectural Implications
+
+The geometric processing pipeline revealed by T-4, combined with findings from T-1 through T-17, yields concrete guidance for model optimization, deployment, and architecture design.
+
+### 1. Layer Pruning & Structured Distillation
+
+The two compression bottlenecks (layers 1–5, PR 6–43; layers 16–24, PR 1.6–7.5) pass information through as few as 1–2 effective dimensions. This means the intermediate layers within each bottleneck are performing incremental refinements on a near-one-dimensional manifold — making them prime candidates for pruning or merging.
+
+- **Layers 17–23** are the most compressible region: PR stays below 7.5, top-1 SV explains 36–79% of variance, and T-3 shows adjacent swaps in layers 25–33 are cheap (Δloss 0.06–0.10), meaning downstream layers tolerate perturbation. A distilled model could replace these 7 layers with 2–3 layers (or even a single linear projection capturing the dominant singular direction) with minimal quality loss.
+- **Layers 1–4** are similarly compressible (PR 6–43) and T-7 confirms they are linearizable (91–99% recovery). These could be collapsed into a single learned linear map during distillation.
+- **Do not prune layer 0, layer 6, or layer 35.** Layer 0 performs the irreplaceable geometric expansion (T-2: 99.6× knockout ratio). Layer 6 is the critical computational hub (T-2: 21.7× knockout, 4/5 top synergistic pairs). Layer 35 performs de-anisotropification essential for LM head accuracy.
+
+### 2. Quantization Strategy by Geometric Phase
+
+Different geometric regimes have fundamentally different precision requirements:
+
+- **Bottleneck layers (1–5, 16–24)**: Representations live in 1–7 effective dimensions. These layers are inherently low-precision-tolerant — quantizing to INT4 or even INT3 should preserve the dominant singular direction with minimal degradation. The signal-to-noise ratio is naturally high because variance concentrates on so few axes.
+- **Distributed processing layers (6–15)**: PR 120–178 with low Jacobian consistency (T-7: 0.55–0.70) means computation is highly input-dependent across many dimensions. These layers are most sensitive to quantization noise — prefer INT8 or FP8 here.
+- **Late recovery layers (25–34)**: High Jacobian consistency (T-7: 0.76–0.88) means transformations are more uniform. Despite high norms (139–568), the near-linear behavior suggests moderate quantization (INT6–INT8) is safe, though the large norm magnitudes require careful scaling factor selection.
+- **Layer 35**: The de-anisotropification involves a deliberate norm reduction (568→391) and cosine collapse (0.62→0.09). This precision-sensitive dispersal benefits from higher precision (FP8 or INT8 minimum).
+
+This suggests a **mixed-precision quantization** scheme aligned to geometric phases could outperform uniform quantization at the same average bit-width.
+
+### 3. KV-Cache Compression
+
+The low effective dimensionality in bottleneck regions implies that key/value vectors at those layers are highly redundant. Combined with T-9's finding that Q/K routing matrices are lower-rank (0.31 effective rank) than V/O matrices (0.52):
+
+- **Layers 16–24**: With PR as low as 1.6, key vectors at these layers project onto essentially one direction. KV-cache entries could be compressed via low-rank projection (rank 4–8 should suffice) or aggressive quantization without meaningful attention degradation.
+- **Layers 6–15**: High-dimensional representations (PR 120–178) require fuller KV-cache fidelity. Compression here risks losing the input-dependent routing that makes these layers globally nonlinear (T-7).
+
+### 4. Feature Extraction & Embedding Selection
+
+For downstream tasks requiring sentence/token embeddings:
+
+- **Always mean-center** representations before use. T-4 shows all anisotropy is mean-direction anisotropy (centered cosine ≈ 0 everywhere). Mean-centering trivially eliminates this, producing near-isotropic embeddings that are better suited for cosine-similarity-based retrieval and clustering.
+- **Use layer 27 for semantic embeddings**: Peak category separation (0.21) before the late-layer anisotropic collapse. Representations are geometrically well-structured (PR ≈ 60) with moderate norms.
+- **Use layer 35 for discriminative tasks**: Maximum category separation (1.03) and near-isotropic geometry (cosine 0.09). However, this is optimized for next-token prediction — fine-tuning may be needed for other tasks.
+- **Avoid layers 16–24 for embeddings**: PR 1.6–7.5 means representations are too compressed to preserve fine-grained distinctions. Even after mean-centering, the effective information content is minimal.
+
+### 5. Early Exit & Adaptive Computation
+
+The geometric pipeline suggests natural exit points for adaptive-depth inference:
+
+- **After layer 15** (end of distributed processing, PR ~178): For easy inputs where the model has already committed to a prediction (T-1: some tokens reach high confidence by mid-layers), the high-dimensional representation may contain enough signal for a lightweight exit head. However, T-1 shows <1% accuracy at layer 12 for the general case, so early exit here is only viable with a confidence threshold.
+- **After layer 24** (end of deep collapse): The information bottleneck has forced commitment — prediction accuracy climbs steeply through this region (T-1). An exit head at layer 24–25 could capture tokens that resolved during the compression phase.
+- **The cost of skipping layer 35** is high: de-anisotropification is necessary for clean LM head discrimination. Any early-exit head at earlier layers must compensate for the anisotropic cone geometry (high cosine similarity, large norms) — likely requiring a learned normalization or dispersal pre-projection.
+
+### 6. Architecture Design Insights
+
+The bimodal bottleneck pattern appears functional rather than accidental:
+
+- **Deliberate information bottlenecks**: The two compression phases (layers 1–5 and 16–24) mirror the information bottleneck principle — compress to discard irrelevant information, then expand to build task-relevant representations. This suggests architectures that *explicitly* design bottleneck layers (e.g., via reduced hidden dimensions or low-rank constraints) might achieve similar information compression more parameter-efficiently.
+- **The final-layer dispersal is architecturally necessary**: The LM head's unembedding matrix expects near-isotropic input (T-4: layer 35 drops cosine from 0.62 to 0.09). Architectures that skip or share the final layer must account for this — directly applying the LM head to layer 34 representations would face a 0.62 mean cosine similarity, degrading token discrimination.
+- **Hub layers deserve over-parameterization**: Layer 6 occupies a unique geometric position (onset of high-dimensional processing, PR jumps from 43 to 170) and is critical for model function (T-2). Allocating more parameters to hub layers (wider MLP, more attention heads) while narrowing bottleneck layers could improve parameter efficiency.
+- **Norm management is an implicit architectural constraint**: The superlinear norm growth (1→568 across 35 layers) with a final correction (568→391 at layer 35) suggests that RMSNorm alone does not prevent norm accumulation — it only controls per-layer scale. Architectures with explicit norm management (e.g., periodic norm reset layers, or residual scaling factors that decay with depth) might reduce the need for the final-layer dispersal and enable more uniform geometric profiles.
+
 ## Usage
 
 ```bash
