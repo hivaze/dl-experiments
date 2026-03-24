@@ -175,8 +175,8 @@ Combined with high raw cosine similarity, this confirms the **anisotropic cone**
 
 #### Update Magnitude
 
-| Layer | ||delta|| | Interpretation |
-|-------|----------|----------------|
+| Layer | ‖delta‖ | Interpretation |
+|-------|---------|----------------|
 | 0 | 7.7 | Moderate — transforms embedding |
 | 1–5 | 4.5–11.9 | Small — incremental refinement |
 | 6–15 | 12.6–17.3 | Medium-sized, relatively consistent updates |
@@ -184,7 +184,7 @@ Combined with high raw cosine similarity, this confirms the **anisotropic cone**
 | 25–34 | 43.6–190.9 | Large and escalating — dominant norm builders |
 | 35 | **513.9** | Massive — the largest single-layer update by far |
 
-Layer 35's update (||delta||=513.9) is **2.7x the size of the residual it receives** (||h(34)||=570.7), making it the only layer whose update exceeds its input in magnitude.
+Layer 35's update (‖delta‖=513.9) is **2.7x the size of the residual it receives** (‖h(34)‖=570.7), making it the only layer whose update exceeds its input in magnitude.
 
 #### Directional Preservation
 
@@ -195,7 +195,7 @@ Most layers preserve the direction of their input remarkably well: cos(h(l), h(l
 
 #### Relative Update Size
 
-The ratio ||delta|| / ||h(l)|| is remarkably stable at **0.29–0.44** for layers 1–34 — each layer's update is about 30–40% the size of the resulting representation. This means the residual stream always dominates over any single layer's contribution, providing stability.
+The ratio ‖delta‖ / ‖h(l)‖ is remarkably stable at **0.29–0.44** for layers 1–34 — each layer's update is about 30–40% the size of the resulting representation. This means the residual stream always dominates over any single layer's contribution, providing stability.
 
 Two exceptions:
 - **Layer 0**: ratio = 0.99 — the update is essentially the entire representation (the embedding contributes very little to the output norm)
