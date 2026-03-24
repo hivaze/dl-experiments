@@ -4,7 +4,7 @@ Inspect the internals of [ACE-Step/Ace-Step1.5](https://huggingface.co/ACE-Step/
 
 ## Model Overview
 
-**~5B total params** across 5 components | bfloat16 native | generates up to 10-minute songs
+**~4.4B generation params** + 600M text embedder | bfloat16 native | generates up to 10-minute songs
 
 The core architectural insight is **separating planning from synthesis**: a standard LLM generates a structured song blueprint (metadata, lyrics, captions) via Chain-of-Thought, then a Diffusion Transformer synthesizes the actual audio conditioned on that blueprint plus lyric/timbre encodings.
 
@@ -237,8 +237,10 @@ For a 10-minute song (600s): 600 × 5 = **3,000 discrete tokens** for the LM to 
 | Audio detokenizer | 105.1M | 28 | 2.4% |
 | DiT time embeddings (t+r) | 59.8M | 12 | 1.4% |
 | DiT other (proj, norms) | 5.3M | 8 | 0.1% |
+| Text projector | 2.1M | 1 | <0.1% |
+| Acoustic projection | 0.1M | — | <0.01% |
 | FSQ quantizer | 0.024M | 4 | <0.01% |
-| **Total (excl. text embedder)** | **~4,416M** | — | — |
+| **Total (excl. text embedder)** | **~4,418M** | — | — |
 | Text embedder (Qwen3-0.6B) | ~600M | — | separate |
 
 ## Architectural Observations

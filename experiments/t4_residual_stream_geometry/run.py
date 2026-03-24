@@ -252,6 +252,167 @@ def compute_norm_metrics(matrix):
     }
 
 
+# ============================================================================
+# Layer Impact & Residual Persistence
+# ============================================================================
+
+def compute_layer_impact(pooled, num_layers):
+    """How much does each layer change the residual stream?
+
+    For each transformer layer l (0..N-1), computes:
+      - delta_norm: mean ||h^(l) - h^(l-1)|| — magnitude of layer's update
+      - cosine_input_output: mean cos(h^(l), h^(l-1)) — directional preservation
+      - update_ratio: mean ||delta|| / ||h^(l)|| — relative update size
+      - update_orthogonality: mean cos(delta, h^(l-1)) — is update aligned with or orthogonal to residual?
+    """
+    results = {}
+    for l in range(num_layers):
+        prev = pooled[l - 1]  # l-1 = -1 is embedding
+        curr = pooled[l]
+        delta = curr - prev
+
+        delta_norms = np.linalg.norm(delta, axis=1)
+        curr_norms = np.linalg.norm(curr, axis=1)
+        prev_norms = np.linalg.norm(prev, axis=1)
+
+        # Directional preservation: cos(output, input)
+        cos_io = np.sum(curr * prev, axis=1) / (curr_norms * prev_norms + 1e-10)
+
+        # Relative update size
+        update_ratio = delta_norms / (curr_norms + 1e-10)
+
+        # Update alignment with existing residual: cos(delta, prev)
+        # ~0 means orthogonal update; ~1 means reinforcing; ~-1 means opposing
+        cos_update_prev = np.sum(delta * prev, axis=1) / (delta_norms * prev_norms + 1e-10)
+
+        results[l] = {
+            "delta_norm_mean": float(np.mean(delta_norms)),
+            "delta_norm_std": float(np.std(delta_norms)),
+            "cosine_input_output": float(np.mean(cos_io)),
+            "cosine_input_output_std": float(np.std(cos_io)),
+            "update_ratio_mean": float(np.mean(update_ratio)),
+            "update_ratio_std": float(np.std(update_ratio)),
+            "update_orthogonality": float(np.mean(cos_update_prev)),
+            "update_orthogonality_std": float(np.std(cos_update_prev)),
+        }
+    return results
+
+
+def compute_persistence(pooled, num_layers):
+    """How strongly do earlier layer signals persist through later processing?
+
+    For each layer l:
+      - cosine_to_embedding: mean cos(h^(l), h^(emb)) — embedding persistence
+      - cosine_to_final: mean cos(h^(l), h^(final)) — alignment with output
+      - update_alignment_to_final: mean cos(delta_l, h^(final)) — does this layer's update survive to output?
+      - update_projection_fraction: mean |<delta_l, h_final_unit>| / ||delta_l|| — fraction of update in final direction
+
+    Also computes cumulative drift: cos(h^(l), h^(l-k)) for gaps k=1,2,4,8,16.
+    """
+    embed = pooled[-1]
+    final = pooled[num_layers - 1]
+
+    embed_norms = np.linalg.norm(embed, axis=1) + 1e-10
+    final_norms = np.linalg.norm(final, axis=1) + 1e-10
+    final_unit = final / (final_norms[:, None])
+
+    per_layer = {}
+    for l in range(-1, num_layers):
+        curr = pooled[l]
+        curr_norms = np.linalg.norm(curr, axis=1) + 1e-10
+
+        cos_to_embed = np.sum(curr * embed, axis=1) / (curr_norms * embed_norms)
+        cos_to_final = np.sum(curr * final, axis=1) / (curr_norms * final_norms)
+
+        entry = {
+            "cosine_to_embedding": float(np.mean(cos_to_embed)),
+            "cosine_to_final": float(np.mean(cos_to_final)),
+        }
+
+        if l >= 0:
+            prev = pooled[l - 1]
+            delta = curr - prev
+            delta_norms = np.linalg.norm(delta, axis=1) + 1e-10
+
+            cos_update_final = np.sum(delta * final, axis=1) / (delta_norms * final_norms)
+            entry["update_alignment_to_final"] = float(np.mean(cos_update_final))
+
+            # Fraction of update vector that projects onto final direction
+            proj_scalar = np.sum(delta * final_unit, axis=1)
+            entry["update_projection_on_final"] = float(np.mean(np.abs(proj_scalar)))
+            entry["update_projection_fraction"] = float(np.mean(np.abs(proj_scalar) / delta_norms))
+
+        per_layer[l] = entry
+
+    # Cumulative drift: cos(h^l, h^(l-k)) for various gap sizes
+    drift = {}
+    for gap in [1, 2, 4, 8, 16]:
+        gap_cosines = []
+        for l in range(gap, num_layers):
+            curr = pooled[l]
+            prev = pooled[l - gap]
+            cn = np.linalg.norm(curr, axis=1) + 1e-10
+            pn = np.linalg.norm(prev, axis=1) + 1e-10
+            cos = np.sum(curr * prev, axis=1) / (cn * pn)
+            gap_cosines.append({"layer": l, "cosine": float(np.mean(cos))})
+        drift[f"gap_{gap}"] = gap_cosines
+
+    return per_layer, drift
+
+
+def compute_update_correlations(pooled, num_layers):
+    """Cosine similarity matrix between mean layer updates.
+
+    Reveals which layers push the residual stream in similar directions.
+    """
+    hidden_dim = pooled[0].shape[1]
+    mean_deltas = np.zeros((num_layers, hidden_dim))
+    for l in range(num_layers):
+        mean_deltas[l] = (pooled[l] - pooled[l - 1]).mean(axis=0)
+
+    norms = np.linalg.norm(mean_deltas, axis=1, keepdims=True) + 1e-10
+    normed = mean_deltas / norms
+    corr = normed @ normed.T
+    return corr
+
+
+def compute_residual_decomposition(pooled, num_layers):
+    """Decompose final representation into per-layer contributions.
+
+    h^(final) = h^(emb) + sum_{l=0}^{N-1} delta_l
+
+    For each layer l, compute the projection of delta_l onto h^(final),
+    giving the fraction of the final representation "explained" by each layer.
+    """
+    final = pooled[num_layers - 1]
+    final_norms = np.linalg.norm(final, axis=1, keepdims=True) + 1e-10
+    final_unit = final / final_norms
+
+    contributions = {}
+
+    # Embedding contribution
+    embed = pooled[-1]
+    proj_embed = np.sum(embed * final_unit, axis=1)
+    contributions["embedding"] = {
+        "signed_projection_mean": float(np.mean(proj_embed)),
+        "signed_projection_std": float(np.std(proj_embed)),
+        "abs_projection_mean": float(np.mean(np.abs(proj_embed))),
+        "fraction_of_final_norm": float(np.mean(proj_embed / final_norms.squeeze())),
+    }
+
+    for l in range(num_layers):
+        delta = pooled[l] - pooled[l - 1]
+        proj = np.sum(delta * final_unit, axis=1)
+        contributions[f"layer_{l}"] = {
+            "signed_projection_mean": float(np.mean(proj)),
+            "signed_projection_std": float(np.std(proj)),
+            "abs_projection_mean": float(np.mean(np.abs(proj))),
+            "fraction_of_final_norm": float(np.mean(proj / final_norms.squeeze())),
+        }
+
+    return contributions
+
+
 def compute_clustering_metrics(per_prompt, categories, layer_idx, rng):
     """Compute intra/inter-category cosine similarity for a layer."""
     # Group tokens by category
@@ -545,6 +706,191 @@ def create_plots(results, num_layers):
     print(f"Saved variance_explained.png")
 
 
+def create_impact_plots(impact, persistence, drift, update_corr, decomposition, num_layers):
+    """Generate plots for layer impact, persistence, and update structure."""
+    layers_t = list(range(num_layers))  # transformer layers only (0..35)
+    layer_labels_t = [str(i) for i in range(num_layers)]
+    x_t = np.arange(len(layers_t))
+
+    layers_all = list(range(-1, num_layers))
+    layer_labels_all = ["emb"] + [str(i) for i in range(num_layers)]
+    x_all = np.arange(len(layers_all))
+
+    # --- Plot 5: Layer Impact (4-panel) ---
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle("Layer Impact on Residual Stream — Qwen3-4B-Instruct-2507", fontsize=14)
+
+    # A: Delta norms (how much each layer changes the residual)
+    ax = axes[0, 0]
+    delta_norms = [impact[l]["delta_norm_mean"] for l in layers_t]
+    delta_stds = [impact[l]["delta_norm_std"] for l in layers_t]
+    ax.plot(x_t, delta_norms, "b-o", markersize=3)
+    ax.fill_between(x_t, np.array(delta_norms) - np.array(delta_stds),
+                     np.array(delta_norms) + np.array(delta_stds), alpha=0.2, color="blue")
+    ax.set_ylabel("||h(l) - h(l-1)||")
+    ax.set_title("A. Layer Update Magnitude")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_t[::4])
+    ax.set_xticklabels([layer_labels_t[i] for i in range(0, len(layer_labels_t), 4)], fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    # B: Cosine(input, output) — directional preservation
+    ax = axes[0, 1]
+    cos_io = [impact[l]["cosine_input_output"] for l in layers_t]
+    ax.plot(x_t, cos_io, "r-o", markersize=3)
+    ax.set_ylabel("cos(h(l), h(l-1))")
+    ax.set_title("B. Directional Preservation (output vs input)")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_t[::4])
+    ax.set_xticklabels([layer_labels_t[i] for i in range(0, len(layer_labels_t), 4)], fontsize=8)
+    ax.set_ylim(-0.1, 1.05)
+    ax.axhline(y=1.0, color="k", linestyle="--", alpha=0.3)
+    ax.grid(True, alpha=0.3)
+
+    # C: Update ratio — relative contribution
+    ax = axes[1, 0]
+    ratios = [impact[l]["update_ratio_mean"] for l in layers_t]
+    ax.plot(x_t, ratios, "g-o", markersize=3)
+    ax.set_ylabel("||delta|| / ||h(l)||")
+    ax.set_title("C. Relative Update Size")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_t[::4])
+    ax.set_xticklabels([layer_labels_t[i] for i in range(0, len(layer_labels_t), 4)], fontsize=8)
+    ax.axhline(y=1.0, color="k", linestyle="--", alpha=0.3, label="delta = residual")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    # D: Update orthogonality — cos(delta, prev)
+    ax = axes[1, 1]
+    orth = [impact[l]["update_orthogonality"] for l in layers_t]
+    ax.plot(x_t, orth, "m-o", markersize=3)
+    ax.set_ylabel("cos(delta, h(l-1))")
+    ax.set_title("D. Update-Residual Alignment")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_t[::4])
+    ax.set_xticklabels([layer_labels_t[i] for i in range(0, len(layer_labels_t), 4)], fontsize=8)
+    ax.axhline(y=0, color="k", linestyle="--", alpha=0.3, label="orthogonal")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    fig.savefig(RESULTS_DIR / "layer_impact.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("Saved layer_impact.png")
+
+    # --- Plot 6: Residual Persistence (4-panel) ---
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle("Residual Stream Persistence — Qwen3-4B-Instruct-2507", fontsize=14)
+
+    # A: Cosine to embedding
+    ax = axes[0, 0]
+    cos_embed = [persistence[l]["cosine_to_embedding"] for l in layers_all]
+    ax.plot(x_all, cos_embed, "b-o", markersize=3)
+    ax.set_ylabel("cos(h(l), h(emb))")
+    ax.set_title("A. Embedding Persistence")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_all[::4])
+    ax.set_xticklabels([layer_labels_all[i] for i in range(0, len(layer_labels_all), 4)], fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    # B: Cosine to final
+    ax = axes[0, 1]
+    cos_final = [persistence[l]["cosine_to_final"] for l in layers_all]
+    ax.plot(x_all, cos_final, "r-o", markersize=3)
+    ax.set_ylabel("cos(h(l), h(final))")
+    ax.set_title("B. Alignment with Final Representation")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_all[::4])
+    ax.set_xticklabels([layer_labels_all[i] for i in range(0, len(layer_labels_all), 4)], fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    # C: Update alignment to final — which layers' updates survive?
+    ax = axes[1, 0]
+    update_align = [persistence[l].get("update_alignment_to_final", 0) for l in layers_t]
+    ax.bar(x_t, update_align, color=["green" if v > 0 else "red" for v in update_align], alpha=0.7)
+    ax.set_ylabel("cos(delta_l, h(final))")
+    ax.set_title("C. Layer Update Alignment to Final Output")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_t[::4])
+    ax.set_xticklabels([layer_labels_t[i] for i in range(0, len(layer_labels_t), 4)], fontsize=8)
+    ax.axhline(y=0, color="k", linestyle="--", alpha=0.3)
+    ax.grid(True, alpha=0.3)
+
+    # D: Cumulative drift for different gaps
+    ax = axes[1, 1]
+    gap_colors = {1: "blue", 2: "green", 4: "orange", 8: "red", 16: "purple"}
+    for gap_key, color in gap_colors.items():
+        drift_data = drift[f"gap_{gap_key}"]
+        drift_x = [d["layer"] for d in drift_data]
+        drift_y = [d["cosine"] for d in drift_data]
+        ax.plot(drift_x, drift_y, "-o", markersize=2, color=color, label=f"gap={gap_key}")
+    ax.set_ylabel("cos(h(l), h(l-gap))")
+    ax.set_title("D. Cumulative Drift by Gap Size")
+    ax.set_xlabel("Layer")
+    ax.legend(fontsize=7)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    fig.savefig(RESULTS_DIR / "residual_persistence.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("Saved residual_persistence.png")
+
+    # --- Plot 7: Update Correlation Matrix ---
+    fig, ax = plt.subplots(figsize=(10, 8))
+    fig.suptitle("Layer Update Correlation Matrix — cos(mean_delta_l, mean_delta_m)", fontsize=13)
+    im = ax.imshow(update_corr, cmap="RdBu_r", vmin=-1, vmax=1, aspect="equal")
+    ax.set_xlabel("Layer")
+    ax.set_ylabel("Layer")
+    ax.set_xticks(np.arange(0, num_layers, 4))
+    ax.set_xticklabels([str(i) for i in range(0, num_layers, 4)], fontsize=8)
+    ax.set_yticks(np.arange(0, num_layers, 4))
+    ax.set_yticklabels([str(i) for i in range(0, num_layers, 4)], fontsize=8)
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    fig.savefig(RESULTS_DIR / "update_correlation.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("Saved update_correlation.png")
+
+    # --- Plot 8: Residual Decomposition ---
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig.suptitle("Final Representation Decomposition — Projection of Each Layer's Update onto h(final)",
+                 fontsize=13)
+
+    # A: Signed projection (contribution to final norm along final direction)
+    ax = axes[0]
+    signed_proj = [decomposition["embedding"]["signed_projection_mean"]]
+    signed_proj += [decomposition[f"layer_{l}"]["signed_projection_mean"] for l in range(num_layers)]
+    decomp_labels = ["emb"] + [str(i) for i in range(num_layers)]
+    x_decomp = np.arange(len(signed_proj))
+    colors = ["green" if v > 0 else "red" for v in signed_proj]
+    ax.bar(x_decomp, signed_proj, color=colors, alpha=0.7)
+    ax.set_ylabel("<delta_l, h_final_unit>")
+    ax.set_title("A. Signed Contribution to Final Direction")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_decomp[::4])
+    ax.set_xticklabels([decomp_labels[i] for i in range(0, len(decomp_labels), 4)], fontsize=8)
+    ax.axhline(y=0, color="k", linestyle="--", alpha=0.3)
+    ax.grid(True, alpha=0.3)
+
+    # B: Fraction of update that projects onto final direction
+    ax = axes[1]
+    proj_frac = [0.0]  # embedding doesn't have update_projection_fraction
+    proj_frac += [decomposition[f"layer_{l}"]["fraction_of_final_norm"] for l in range(num_layers)]
+    ax.bar(x_decomp[1:], proj_frac[1:], color="steelblue", alpha=0.7)
+    ax.set_ylabel("|<delta_l, h_final_unit>| / ||delta_l||")
+    ax.set_title("B. Fraction of Update Aligned with Final Direction")
+    ax.set_xlabel("Layer")
+    ax.set_xticks(x_decomp[1::4])
+    ax.set_xticklabels([decomp_labels[i] for i in range(1, len(decomp_labels), 4)], fontsize=8)
+    ax.set_ylim(0, 1.0)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    fig.savefig(RESULTS_DIR / "residual_decomposition.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("Saved residual_decomposition.png")
+
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -583,9 +929,18 @@ def main():
     print("\n--- Computing Geometry Metrics ---")
     t_analyze = time.time()
     results = analyze(pooled, per_prompt, categories, num_layers)
-    print(f"Analysis took {time.time() - t_analyze:.1f}s")
+    print(f"Geometry analysis took {time.time() - t_analyze:.1f}s")
 
-    # Print summary table
+    # Compute layer impact & persistence metrics
+    print("\n--- Computing Layer Impact & Persistence ---")
+    t_impact = time.time()
+    impact = compute_layer_impact(pooled, num_layers)
+    persistence, drift = compute_persistence(pooled, num_layers)
+    update_corr = compute_update_correlations(pooled, num_layers)
+    decomposition = compute_residual_decomposition(pooled, num_layers)
+    print(f"Impact & persistence analysis took {time.time() - t_impact:.1f}s")
+
+    # Print geometry summary table
     print("\n" + "=" * 90)
     print(f"{'Layer':>6} | {'PR':>8} | {'Cos(raw)':>9} | {'Cos(ctr)':>9} | "
           f"{'SpFlat':>8} | {'Norm':>8} | {'Intra':>7} | {'Inter':>7} | {'Sep':>7}")
@@ -599,16 +954,31 @@ def main():
               f"{r['inter_category_sim']:>7.4f} | {r['cluster_separation']:>7.3f}")
     print("=" * 90)
 
+    # Print layer impact table
+    print("\n" + "=" * 110)
+    print(f"{'Layer':>6} | {'||delta||':>10} | {'cos(io)':>8} | {'upd_ratio':>10} | "
+          f"{'upd_orth':>9} | {'cos→emb':>8} | {'cos→fin':>8} | {'upd→fin':>8} | {'proj_frac':>10}")
+    print("-" * 110)
+    for l in range(num_layers):
+        im = impact[l]
+        ps = persistence[l]
+        print(f"{l:>6} | {im['delta_norm_mean']:>10.2f} | {im['cosine_input_output']:>8.4f} | "
+              f"{im['update_ratio_mean']:>10.4f} | {im['update_orthogonality']:>9.4f} | "
+              f"{ps['cosine_to_embedding']:>8.4f} | {ps['cosine_to_final']:>8.4f} | "
+              f"{ps.get('update_alignment_to_final', 0):>8.4f} | "
+              f"{ps.get('update_projection_fraction', 0):>10.4f}")
+    print("=" * 110)
+
     # Generate plots
     print("\n--- Generating Plots ---")
     create_plots(results, num_layers)
+    create_impact_plots(impact, persistence, drift, update_corr, decomposition, num_layers)
 
     # Save results
     # Convert int keys to strings for JSON
     json_results = {}
     for k, v in results.items():
         layer_key = f"layer_{k}" if k >= 0 else "embedding"
-        # Remove sv_spectrum from main summary (save separately)
         v_copy = {kk: vv for kk, vv in v.items() if kk != "sv_spectrum"}
         json_results[layer_key] = v_copy
 
@@ -616,6 +986,13 @@ def main():
     for k, v in results.items():
         layer_key = f"layer_{k}" if k >= 0 else "embedding"
         sv_spectra[layer_key] = v.get("sv_spectrum", [])
+
+    # Convert impact/persistence dicts
+    json_impact = {f"layer_{k}": v for k, v in impact.items()}
+    json_persistence = {}
+    for k, v in persistence.items():
+        key = f"layer_{k}" if k >= 0 else "embedding"
+        json_persistence[key] = v
 
     output = {
         "config": {
@@ -631,6 +1008,11 @@ def main():
         },
         "per_layer": json_results,
         "sv_spectra": sv_spectra,
+        "layer_impact": json_impact,
+        "persistence": json_persistence,
+        "cumulative_drift": drift,
+        "update_correlation_matrix": update_corr.tolist() if isinstance(update_corr, np.ndarray) else update_corr,
+        "residual_decomposition": decomposition,
         "timing": {
             "total_s": time.time() - t_start,
             "extraction_s": t_analyze - t_extract,

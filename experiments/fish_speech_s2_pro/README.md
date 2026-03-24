@@ -10,6 +10,32 @@ Model type `fish_qwen3_omni` — a custom architecture not registered in Hugging
 
 The core idea is **Dual-AR factorization**: one large autoregressive model generates semantic audio tokens along the time axis, then a smaller model fills in acoustic detail across codebooks at each timestep.
 
+## Pipeline
+
+```
+Text Input
+     │
+     ▼
+┌───────────────────────────────┐
+│  Slow AR — 36L Qwen3 (4.0B)  │  autoregressive over time
+│  unified text + audio vocab   │  155,776 tokens
+└───────────┬───────────────────┘
+            │ semantic tokens + hidden states
+            ▼
+┌───────────────────────────────┐
+│  Fast AR — 4L decoder (530M)  │  autoregressive over codebooks
+│  max_seq_len = 11             │  fills 9 residual codebooks
+└───────────┬───────────────────┘
+            │ 10 codes per timestep
+            ▼
+┌───────────────────────────────┐
+│  Codec — transformer (695M)   │  16-layer quantizer
+│  codes → waveform             │  semantic + acoustic VQ
+└───────────┬───────────────────┘
+            ▼
+       Audio Output
+```
+
 ## Architecture Details
 
 ### Slow AR (text_model) — 4,032M params (88.4%)
@@ -97,7 +123,7 @@ This means the codec itself is a 16-layer transformer that converts between audi
 | `<|phoneme_start|>` / `<|phoneme_end|>` | 151,670 – 151,671 | 2 | Phoneme boundaries |
 | `<|text|>`, `<|voice|>`, `<|interleave|>` | 151,672 – 151,674 | 3 | Mode markers |
 | `<|audio_start|>` / `<|audio_end|>` / `<|audio_pad|>` | 151,675 – 151,677 | 3 | Audio stream delimiters |
-| **`<|semantic:0|>`** through **`<|semantic:4094|>`** | 151,678 – 155,773 | **4,095** | Audio semantic tokens |
+| **`<|semantic:0|>`** through **`<|semantic:4095|>`** | 151,678 – 155,773 | **4,096** | Audio semantic tokens |
 
 Total vocab: 155,776. The model operates in a unified text-audio token space — a single sequence can contain text tokens, control tokens, and audio semantic tokens interleaved.
 
@@ -128,7 +154,7 @@ Higher effective rank in later layers suggests they use more of their representa
 
 ### Fast AR — Weight Statistics
 
-| Layer | mean ||W||_F | mean σ₁ | mean eff_rank |
+| Layer | mean ‖W‖_F | mean σ₁ | mean eff_rank |
 |---|---|---|---|
 | 0 | 111.5 | 17.2 | 2127.5 |
 | 1 | 114.3 | 12.0 | 2200.2 |
@@ -139,19 +165,19 @@ Layer 3 (the final layer) stands out: 17% lower Frobenius norm and lower effecti
 
 ### Embedding Statistics
 
-| Weight | Shape | ||W||_F | σ₁ | eff_rank |
+| Weight | Shape | ‖W‖_F | σ₁ | eff_rank |
 |---|---|---|---|---|
 | text_model embeddings | [155776, 2560] | 1123.8 | 823.7 | — |
 | codebook embeddings | [40960, 2560] | 449.4 | 175.3 | — |
 | audio token embeddings | [4096, 2560] | 170.3 | 27.7 | 1682.0 |
 
-The text embedding matrix has an extremely dominant first singular value (σ₁=823.7, 73% of Frobenius norm), suggesting a strong mean direction in the embedding space. The audio token embeddings are much more distributed (σ₁/||W||_F = 0.16).
+The text embedding matrix has an extremely dominant first singular value (σ₁=823.7, 73% of Frobenius norm), suggesting a strong mean direction in the embedding space. The audio token embeddings are much more distributed (σ₁/‖W‖_F = 0.16).
 
 ### Selected Layer Details
 
 Layer 0 (first), 17 (middle), 35 (last) of Slow AR:
 
-| Layer | Weight | ||W||_F | σ₁ | eff_rank | top1_sv |
+| Layer | Weight | ‖W‖_F | σ₁ | eff_rank | top1_sv |
 |---|---|---|---|---|---|
 | 0 | attention.wqkv | 129.3 | 25.1 | 2169.8 | 0.0045 |
 | 0 | attention.wo | 94.9 | 17.1 | 1911.2 | 0.0046 |
