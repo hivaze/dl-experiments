@@ -25,7 +25,7 @@ This connects to the Layer Shuffle Recovery experiment (on Qwen3-1.7B) — if ac
 
 ### Participation Ratio as Effective Dimensionality
 
-Given a set of $N$ token representations $\{\mathbf{h}_1, \ldots, \mathbf{h}_N\} \subset \mathbb{R}^d$, form the mean-centered data matrix $\mathbf{H} \in \mathbb{R}^{N \times d}$ with rows $\mathbf{h}_i - \bar{\mathbf{h}}$. The SVD gives singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$ where $r = \min(N, d)$. Define the normalized energy distribution:
+Given a set of $N$ token representations $\lbrace\mathbf{h}_1, \ldots, \mathbf{h}_N\rbrace \subset \mathbb{R}^d$, form the mean-centered data matrix $\mathbf{H} \in \mathbb{R}^{N \times d}$ with rows $\mathbf{h}_i - \bar{\mathbf{h}}$. The SVD gives singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$ where $r = \min(N, d)$. Define the normalized energy distribution:
 
 $$p_i = \frac{\sigma_i^2}{\sum_{j=1}^{r} \sigma_j^2}$$
 
@@ -43,7 +43,7 @@ The PR is more robust than rank (which is sensitive to numerical thresholds) and
 
 ### Isotropy via Cosine Similarity
 
-For a set of vectors $\{\mathbf{h}_i\}$, the **mean pairwise cosine similarity** is:
+For a set of vectors $\lbrace\mathbf{h}_i\rbrace$, the **mean pairwise cosine similarity** is:
 
 $$\bar{c} = \mathbb{E}_{i \ne j}\left[\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\|\mathbf{h}_i\| \cdot \|\mathbf{h}_j\|}\right]$$
 
@@ -61,7 +61,7 @@ Computing $\bar{c}$ on the centered vectors $\tilde{\mathbf{h}}_i$ isolates the 
 
 ### Spectral Flatness
 
-The **spectral flatness** of the covariance eigenvalue spectrum $\{\lambda_i\}_{i=1}^{m}$ (where $m$ is the number of positive eigenvalues, with $\lambda_i = \sigma_i^2 / (N-1)$) is the ratio of geometric to arithmetic mean:
+The **spectral flatness** of the covariance eigenvalue spectrum $\lbrace\lambda_i\rbrace_{i=1}^{m}$ (where $m$ is the number of positive eigenvalues, with $\lambda_i = \sigma_i^2 / (N-1)$) is the ratio of geometric to arithmetic mean:
 
 $$\text{SF} = \frac{\left(\prod_{i=1}^{m} \lambda_i\right)^{1/m}}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i} = \frac{\exp\left(\frac{1}{m}\sum_{i=1}^{m} \ln \lambda_i\right)}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i}$$
 
@@ -73,7 +73,7 @@ By the AM-GM inequality, $\text{SF} \in (0, 1]$, with equality to 1 iff all eige
 
 For tokens partitioned into $C$ categories, define:
 
-$$\bar{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \mathbb{E}_{i,j \in c,\, i \ne j}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right], \qquad \bar{c}_{\text{inter}} = \mathbb{E}_{\substack{i \in c_1,\, j \in c_2 \\ c_1 \ne c_2}}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right]$$
+$$\bar{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \mathbb{E}_{i,j \in c,\, i \ne j}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right], \qquad \bar{c}_{\text{inter}} = \mathbb{E}_{i \in c_1,\, j \in c_2,\, c_1 \ne c_2}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right]$$
 
 The **cluster separation ratio** is:
 

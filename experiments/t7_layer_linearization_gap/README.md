@@ -232,7 +232,7 @@ Note: the MLP sublayer function includes the attention computation (since its in
 
 ### Method 5: Multi-Scale Nonlinearity Order
 
-Perturbation gap computed at $\varepsilon \in \{0.01, 0.02, 0.05, 0.1, 0.2\}$ with 8 random directions each. Log-log linear regression of gap vs $\varepsilon$ gives the nonlinearity order per layer. $R^2$ of the fit indicates how well a single power law describes the nonlinearity.
+Perturbation gap computed at $\varepsilon \in \lbrace 0.01, 0.02, 0.05, 0.1, 0.2 \rbrace$ with 8 random directions each. Log-log linear regression of gap vs $\varepsilon$ gives the nonlinearity order per layer. $R^2$ of the fit indicates how well a single power law describes the nonlinearity.
 
 **Caveat:** At large $\varepsilon$ (0.1--0.2), the Taylor expansion may not converge well, and higher-order terms can cause non-monotonic gap behavior (we observe this in layers 0 and 35 where the gap at $\varepsilon=0.2$ exceeds $\varepsilon=0.1$). The fitted "order" should be interpreted as an effective scaling exponent over the tested range, not a true mathematical order of the dominant nonlinearity.
 
@@ -243,7 +243,7 @@ Methods 1-5 measure properties of the Jacobian at a single operating point. Meth
 For each layer, we:
 1. Pick $D=8$ shared random unit directions $\hat{d}_1, ..., \hat{d}_D$ in $\mathbb{R}^{2560}$.
 2. For each of $K=10$ calibration prompts, compute the JVP (Jacobian-vector product) at the last completion token: $v_k^{(d)} = J(x_k) \hat{d} / \|J(x_k) \hat{d}\|$ — the normalized output direction when perturbing in direction $\hat{d}$.
-3. For each direction $d$, compute the mean pairwise cosine similarity of $\{v_1^{(d)}, ..., v_K^{(d)}\}$ across all prompts.
+3. For each direction $d$, compute the mean pairwise cosine similarity of $\lbrace v_1^{(d)}, ..., v_K^{(d)} \rbrace$ across all prompts.
 4. Average across directions → **Jacobian consistency score**.
 
 If the Jacobian is the same matrix at all inputs (globally linear), all $v_k^{(d)}$ are identical → consistency $= 1.0$. If the Jacobian varies strongly (globally nonlinear), they point in different directions → consistency $\to 0$.
