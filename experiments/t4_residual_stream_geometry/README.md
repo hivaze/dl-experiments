@@ -167,7 +167,7 @@ Norms grow **superlinearly** across depth:
 - Layer 30: 282.0
 - Layer 34: 570.7
 
-Combined with high raw cosine similarity, this confirms the **anisotropic cone** pattern: representations extend along an increasingly narrow cone with growing norms. However, the final layer (35) breaks this pattern — norms drop to 387.6 and cosine similarity plummets to 0.09, indicating the final layer disperses representations for the LM head projection.
+Combined with high raw cosine similarity, this confirms the **anisotropic cone** pattern: representations extend along an increasingly narrow cone with growing norms. The final layer (35) breaks this pattern — norms drop to 387.6 and cosine drops to 0.09 (see Layer Impact below for the mechanism).
 
 ### Layer Impact on Residual Stream
 
@@ -310,25 +310,17 @@ The SV heatmap shows a clear "bright band" at singular value index 0 during coll
 
 ## Conclusions & Key Findings
 
-1. **Bimodal dimensionality collapse**: Two distinct bottleneck regions (layers 1–5, PR 6–43; layers 16–24, PR 2.3–16.8) where representations collapse to near-one-dimensional manifolds. These are sharp phase transitions, not gradual, and bookend a high-dimensional processing plateau (layers 6–15, PR 147–205).
+1. **Bimodal dimensionality collapse**: Two distinct bottleneck regions (layers 1–5, PR 6–43; layers 16–24, PR 2.3–16.8) bookend a high-dimensional processing plateau (layers 6–15, PR 147–205). These are sharp phase transitions, not gradual.
 
-2. **All anisotropy is mean-direction anisotropy**: Centered cosine similarity is ~0 everywhere. The high raw cosine (~0.4–0.6) is entirely explained by a shared mean direction — mean-centering produces near-isotropic representations at every layer.
+2. **All anisotropy is mean-direction anisotropy**: Centered cosine similarity is ~0 everywhere — mean-centering produces near-isotropic representations at every layer.
 
-3. **Superlinear norm growth with final-layer correction**: Norms grow from 1.0 to 571, but layer 35 reduces norms to 388 and increases isotropy (cosine 0.63→0.09). Layer 35 acts as a dispersal mechanism for the vocabulary projection.
+3. **Layer 0 and layer 35 are geometric singularities**: Layer 0 completely redirects the embedding (cos(io) = 0.11, update ratio = 1.0). Layer 35 actively opposes the accumulated residual (cos(delta, prev) = −0.73, update ratio = 1.38). All other layers preserve direction with cos > 0.91 and updates at 30–40% of the residual.
 
-4. **The residual stream is remarkably stable**: Layers 1–34 preserve the direction of their input with cos > 0.91, and each layer's update is only 30–40% of the resulting representation. The residual always dominates.
+4. **The embedding is erased by layer 5**: All directional information in the later residual stream comes from transformer updates, not from the embedding.
 
-5. **Layer 0 and layer 35 are geometric singularities**: Layer 0 completely redirects the embedding (cos = 0.11, update ratio = 1.0). Layer 35 actively opposes the accumulated residual (cos(delta, prev) = −0.73, update ratio = 1.38). No other layers behave remotely like these two.
+5. **Late layers dominate the final representation**: Layers 30–35 contribute ~80% of the final representation's magnitude along its own direction. Layers 0–15 contribute <5% — the early network builds intermediate structure orthogonal to the final output.
 
-6. **The embedding is erased by layer 5**: Cosine with the original embedding drops to <0.03 by layer 5 and stays near zero. All directional information in the later residual stream comes from transformer updates, not from the embedding.
-
-7. **Late layers dominate the final representation**: Layers 30–35 contribute ~80% of the final representation's magnitude along its own direction. Layers 0–15 contribute <5%. The early network builds intermediate structure that is orthogonal to the final output.
-
-8. **Layer updates form three correlated blocks** (early/mid/late) with a strongly anti-correlated layer 35, aligning with the geometric phase boundaries.
-
-9. **Non-monotonic category separation**: Separation increases through mid-layers (peak 0.16 at L27), reverses in layers 29–34 as the anisotropic cone dominates, then spikes to 0.73 at layer 35 when dispersal lets category structure emerge. Code tokens are most distinctive at layer 35.
-
-10. **Connection to Layer Shuffle Recovery**: The sharp geometric transitions at each layer (distinct PR, norm, SV spectrum, update direction) explain why activation fingerprints are discriminative for layer ordering — shuffling disrupts these predictable signatures.
+6. **Layer updates form three correlated blocks** (early/mid/late) with a strongly anti-correlated layer 35, aligning with the geometric phase boundaries. This explains why activation fingerprints (Layer Shuffle Recovery) are discriminative for layer ordering.
 
 ## Cross-Experiment Connections
 
@@ -358,7 +350,7 @@ T-7 found a U-shaped nonlinearity profile with middle layers (6–18) being most
 - **Layers 6–8**: Low Jacobian consistency (0.55–0.66) despite low linearization gap. The Jacobian is smooth at each operating point but *varies strongly across inputs*. These layers have high PR (197–205) — the many active dimensions create room for input-dependent behavior.
 - **Layers 29–35**: High consistency (0.76–0.88), meaning the Jacobian is nearly the same regardless of input. Norms are largest here (236–571), and the late-layer norm growth dominates over input-dependent variation. The update-residual alignment is strongly positive (cos = 0.29–0.44), confirming these layers perform a consistent, reinforcing transformation.
 
-T-7 also found that MLP nonlinearity drives the late-layer spike (MLP gap 0.24 at layer 35). The final-layer dispersal (PR: 73→160, cosine: 0.63→0.09) requires nonlinear transformation that SwiGLU provides — and the strongly negative update-residual alignment (cos = −0.73) shows this is an active reversal, not just noise.
+T-7 also found that MLP nonlinearity drives the late-layer spike (MLP gap 0.24 at layer 35). The final-layer dispersal requires nonlinear transformation that SwiGLU provides — the strongly negative update-residual alignment (cos = −0.73) shows this is an active reversal, not just noise.
 
 ### T-9 (Weight Spectral Structure): Weight Rank vs Representation Dimensionality
 
@@ -366,15 +358,13 @@ T-9 found no significant correlation between weight effective rank and represent
 
 $$\mathbf{h}^{(\ell)} = \mathbf{h}^{(0)} + \sum_{i=1}^{\ell} f_i\left(\mathbf{h}^{(i-1)}\right)$$
 
-A single layer's weight rank constrains only its *incremental update* $f_i$, not the total dimensionality of $\mathbf{h}^{(\ell)}$. The bimodal collapse is driven by dominant singular values in the *accumulated representations* (top-1 SV explains up to 79% of variance at layer 16), which can emerge from accumulation dynamics regardless of individual weight ranks. The residual decomposition confirms this: late layers contribute disproportionately to the final norm, so the "accumulated" representation is dominated by a few layers' updates rather than being a balanced sum.
-
-T-9's finding that Q/K routing matrices are lower-rank (0.31 effective rank) than V/O value matrices (0.52) has a geometric interpretation: routing (deciding where to attend) operates in a lower-dimensional subspace, while value extraction must manipulate the full representation geometry.
+A single layer's weight rank constrains only its *incremental update* $f_i$, not the total dimensionality of $\mathbf{h}^{(\ell)}$. The bimodal collapse is driven by dominant singular values in the *accumulated representations* (top-1 SV explains up to 79% of variance at layer 16), which emerge from accumulation dynamics regardless of individual weight ranks.
 
 ### T-17 (Contrastive Trajectories): Geometry of Divergence
 
 T-17 found that **shared-prefix** antonym pairs maintain high cosine similarity (>0.63) across layers 2–34, with a dip at layer 21. During the deep collapse (PR 2.3–16.8), two sequences processing different tokens are squeezed onto a near-one-dimensional manifold — their cosine similarity remains high because there is essentially only one direction available. The update-residual alignment data adds nuance: during the collapse (L16–24), layers are reinforcing a shared dominant direction (cos(delta, prev) > 0), which further compresses both sequences toward the same axis.
 
-T-17's finding that layer 35 is a "universal discriminator" (all cosine similarities drop sharply) aligns directly with T-4's final-layer dispersal — the strongly opposing update (cos(delta, prev) = −0.73) actively breaks apart the anisotropic cone, expanding to PR 160 and cosine 0.09, which maximally separates all token alternatives for the LM head.
+T-17's finding that layer 35 is a "universal discriminator" (all cosine similarities drop sharply) aligns directly with T-4's final-layer dispersal mechanism.
 
 ### T-1 (Logit Lens): Prediction Quality vs Geometric Phase
 
@@ -414,7 +404,7 @@ The following implications are **hypotheses grounded in T-4 observations and cro
 The two compression bottlenecks pass information through as few as 2–3 effective dimensions, making intermediate layers within each bottleneck candidates for pruning or merging:
 
 - **Layers 17–23**: PR stays below 10, top-1 SV explains 36–79% of variance, and their updates are highly correlated (update correlation >0.5). *Hypothesis*: these 7 layers could be replaced with 2–3 layers or a single linear projection capturing the dominant singular direction.
-- **Layers 1–4**: Similarly low-dimensional (PR 6–20) and confirmed linearizable by T-7 (91–99% recovery). Update-residual alignment is consistently +0.37 (reinforcing), suggesting a simple scaling transformation. *Hypothesis*: these could be collapsed into a single learned linear map.
+- **Layers 1–4**: Similarly low-dimensional (PR 6–20) and confirmed linearizable by T-7 (91–99% recovery). *Hypothesis*: these could be collapsed into a single learned linear map.
 - **Do not prune layer 0, layer 6, or layer 35.** T-2 knockout ratios (99.6x, 21.7x) and T-4's unique geometric signatures at these layers indicate they perform irreplaceable transformations.
 
 ### 2. Quantization Strategy by Geometric Phase
@@ -451,10 +441,8 @@ The geometric pipeline suggests natural exit points:
 
 ### 6. Architecture Design Observations
 
-- **The bimodal bottleneck pattern may be functional**: the two compression phases mirror the information bottleneck principle — compress to discard irrelevant features, then expand to build task-relevant representations. The update correlation blocks confirm these are coherent processing stages, not random fluctuations.
-- **Final-layer dispersal appears necessary for the LM head**: applying the LM head to layer 34 representations (cosine 0.63) instead of layer 35 (cosine 0.09) would face high inter-token similarity, likely degrading discrimination. The active opposing mechanism (cos(delta, prev) = −0.73) shows this isn't a passive effect — the model has learned to actively reverse the dominant direction.
-- **Late layers are the main norm builders**: layers 30–35 contribute ~80% of the final norm along the output direction, while layers 0–15 contribute <5%. This suggests the early network's role is to build intermediate structure in directions orthogonal to the output — structure that late layers then consume and redirect toward the prediction.
-- **Norm management**: RMSNorm controls per-layer scale but does not prevent the superlinear norm accumulation (1→571) in the residual stream. The strongly reinforcing updates in layers 25–34 (cos(delta, prev) = +0.35) are the proximate cause of this growth.
+- **The bimodal bottleneck pattern may be functional**: the two compression phases mirror the information bottleneck principle — compress to discard irrelevant features, then expand to build task-relevant representations. Architectures with *explicit* bottleneck layers (reduced hidden dims or low-rank constraints) might achieve similar compression more parameter-efficiently.
+- **Final-layer dispersal appears necessary for the LM head**: applying the LM head to layer 34 representations (cosine 0.63) instead of layer 35 (cosine 0.09) would face high inter-token similarity, degrading discrimination. Architectures that share or skip the final layer would need an alternative dispersal mechanism.
 
 ## Usage
 
