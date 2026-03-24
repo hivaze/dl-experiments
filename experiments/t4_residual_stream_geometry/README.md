@@ -63,7 +63,7 @@ Computing $\bar{c}$ on the centered vectors $\tilde{\mathbf{h}}_i$ isolates the 
 
 The **spectral flatness** of the covariance eigenvalue spectrum $\{\lambda_i\}_{i=1}^{m}$ (where $m$ is the number of positive eigenvalues, with $\lambda_i = \sigma_i^2 / (N-1)$) is the ratio of geometric to arithmetic mean:
 
-$$\text{SF} = \frac{\left(\prod_{i=1}^{m} \lambda_i\right)^{1/m}}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i} = \frac{\exp\!\left(\frac{1}{m}\sum_{i=1}^{m} \ln \lambda_i\right)}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i}$$
+$$\text{SF} = \frac{\left(\prod_{i=1}^{m} \lambda_i\right)^{1/m}}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i} = \frac{\exp\left(\frac{1}{m}\sum_{i=1}^{m} \ln \lambda_i\right)}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i}$$
 
 By the AM-GM inequality, $\text{SF} \in (0, 1]$, with equality to 1 iff all eigenvalues are equal (perfectly isotropic). A value near 0 indicates a "spiked" spectrum dominated by a few large eigenvalues.
 
@@ -73,7 +73,7 @@ By the AM-GM inequality, $\text{SF} \in (0, 1]$, with equality to 1 iff all eige
 
 For tokens partitioned into $C$ categories, define:
 
-$$\bar{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \mathbb{E}_{i,j \in c,\, i \ne j}\!\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right], \qquad \bar{c}_{\text{inter}} = \mathbb{E}_{\substack{i \in c_1,\, j \in c_2 \\ c_1 \ne c_2}}\!\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right]$$
+$$\bar{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \mathbb{E}_{i,j \in c,\, i \ne j}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right], \qquad \bar{c}_{\text{inter}} = \mathbb{E}_{\substack{i \in c_1,\, j \in c_2 \\ c_1 \ne c_2}}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right]$$
 
 The **cluster separation ratio** is:
 
@@ -364,7 +364,7 @@ T-7 also found that MLP nonlinearity drives the late-layer spike (MLP gap 0.24 a
 
 T-9 found no significant correlation between weight effective rank and representation geometry (r = 0.157, p = 0.36). T-4 explains why: the residual stream is an **accumulated sum** of all upstream layer contributions:
 
-$$\mathbf{h}^{(\ell)} = \mathbf{h}^{(0)} + \sum_{i=1}^{\ell} f_i\!\left(\mathbf{h}^{(i-1)}\right)$$
+$$\mathbf{h}^{(\ell)} = \mathbf{h}^{(0)} + \sum_{i=1}^{\ell} f_i\left(\mathbf{h}^{(i-1)}\right)$$
 
 A single layer's weight rank constrains only its *incremental update* $f_i$, not the total dimensionality of $\mathbf{h}^{(\ell)}$. The bimodal collapse is driven by dominant singular values in the *accumulated representations* (top-1 SV explains up to 79% of variance at layer 16), which can emerge from accumulation dynamics regardless of individual weight ranks. The residual decomposition confirms this: late layers contribute disproportionately to the final norm, so the "accumulated" representation is dominated by a few layers' updates rather than being a balanced sum.
 
