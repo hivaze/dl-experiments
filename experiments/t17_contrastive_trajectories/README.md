@@ -31,7 +31,11 @@ $$h_t^{(\ell)} = h_t^{(0)} + \sum_{i=1}^{\ell} \Delta_i$$
 
 where:
 - $h_t^{(0)} \in \mathbb{R}^{d}$ is the token embedding (the initial draft — just looking up the token in a table, $d = 2560$ for Qwen3-4B)
-- $\Delta_i = f_i(h_t^{(i-1)})$ is the residual update from layer $i$ — the "correction" that layer $i$ writes after reading the current state $h_t^{(i-1)}$. Each $f_i$ consists of self-attention followed by a SwiGLU MLP.
+- The residual update from layer $i$ is:
+
+$$\Delta_i = f_i(h_t^{(i-1)})$$
+
+This is the "correction" that layer $i$ writes after reading the current state $h_t^{(i-1)}$. Each $f_i$ consists of self-attention followed by a SwiGLU MLP.
 - The sum is cumulative: layer $\ell$'s output is the embedding plus all corrections from layers $1$ through $\ell$
 
 **Why this matters.** Because updates are additive, the hidden state at each layer is a point in the same $d$-dimensional space. As we go deeper (increasing $\ell$), the hidden state traces out a *path* (trajectory) through this space — starting at the embedding, accumulating corrections, and ending at the representation that gets decoded into a token prediction. This is what we compare between two completions.
@@ -50,7 +54,11 @@ $$\mathbf{a}_\ell = h_{t^*}^{(\ell, A)} \quad \text{(hidden state at the pivot, 
 
 $$\mathbf{b}_\ell = h_{t^*}^{(\ell, B)} \quad \text{(hidden state at the pivot, completion B, after layer } \ell\text{)}$$
 
-Both trajectories $\mathbf{a}_0, \mathbf{a}_1, \ldots, \mathbf{a}_L$ and $\mathbf{b}_0, \mathbf{b}_1, \ldots, \mathbf{b}_L$ live in $\mathbb{R}^{2560}$ and are shaped by the same context (identical prefix) but seeded with different tokens at the pivot. Our question becomes: **how does the distance between $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ evolve as $\ell$ goes from 0 to 35?**
+Both trajectories
+
+$$\mathbf{a}_0, \mathbf{a}_1, \ldots, \mathbf{a}_L \quad \text{and} \quad \mathbf{b}_0, \mathbf{b}_1, \ldots, \mathbf{b}_L$$
+
+live in $\mathbb{R}^{2560}$ and are shaped by the same context (identical prefix) but seeded with different tokens at the pivot. Our question becomes: **how does the distance between $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ evolve as $\ell$ goes from 0 to 35?**
 
 ### Step 3: Why One Metric Isn't Enough
 
@@ -83,7 +91,9 @@ We use shorthand throughout: $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ are the hid
 
 $$\text{cos}(\ell) = \frac{\mathbf{a}_\ell \cdot \mathbf{b}_\ell}{\lVert \mathbf{a}_\ell \rVert \lVert \mathbf{b}_\ell \rVert}$$
 
-where $\mathbf{a}_\ell \cdot \mathbf{b}_\ell = \sum_{i=1}^{d} a_{\ell,i} b_{\ell,i}$ is the dot product and $\lVert \mathbf{a}_\ell \rVert = \sqrt{\sum_i a_{\ell,i}^2}$ is the Euclidean norm.
+where the dot product and Euclidean norm are:
+
+$$\mathbf{a}_\ell \cdot \mathbf{b}_\ell = \sum_{i=1}^{d} a_{\ell,i} b_{\ell,i}, \qquad \lVert \mathbf{a}_\ell \rVert = \sqrt{\sum_i a_{\ell,i}^2}$$
 
 - $\text{cos}(\ell) = 1$: identical directions (representations encode the same information, up to scale)
 - $\text{cos}(\ell) = 0$: orthogonal (completely unrelated)
@@ -102,8 +112,12 @@ We normalize by the average norm so that the distance is comparable across layer
 $$d(\ell) = \frac{\lVert \mathbf{a}_\ell - \mathbf{b}_\ell \rVert}{\frac{1}{2}\bigl(\lVert \mathbf{a}_\ell \rVert + \lVert \mathbf{b}_\ell \rVert\bigr)}$$
 
 **Step by step:**
-1. Compute the difference vector: $\mathbf{a}_\ell - \mathbf{b}_\ell$ (a vector in $\mathbb{R}^{2560}$ pointing from B to A)
-2. Take its Euclidean norm: $\lVert \mathbf{a}_\ell - \mathbf{b}_\ell \rVert$ (how far apart the two points are)
+1. Compute the difference vector (a vector in $\mathbb{R}^{2560}$ pointing from B to A):
+
+$$\mathbf{a}_\ell - \mathbf{b}_\ell$$
+2. Take its Euclidean norm (how far apart the two points are):
+
+$$\lVert \mathbf{a}_\ell - \mathbf{b}_\ell \rVert$$
 3. Divide by the mean norm of the two vectors (normalizes for the overall scale at this layer)
 
 - $d(\ell) = 0$: identical representations
@@ -125,7 +139,11 @@ KL divergence answers the *functional* question: **if we forced the model to dec
 
 $$\hat{\mathbf{a}}_\ell = \text{RMSNorm}(\mathbf{a}_\ell)$$
 
-RMSNorm normalizes by the root-mean-square of the vector's components: $\hat{a}_i = \frac{a_i}{\text{RMS}(\mathbf{a})} \cdot \gamma_i$ where $\text{RMS}(\mathbf{a}) = \sqrt{\frac{1}{d}\sum_j a_j^2}$ and $\gamma$ is a learned scale. This puts the representation on a consistent scale for the unembedding.
+RMSNorm normalizes by the root-mean-square of the vector's components:
+
+$$\hat{a}_i = \frac{a_i}{\text{RMS}(\mathbf{a})} \cdot \gamma_i, \qquad \text{RMS}(\mathbf{a}) = \sqrt{\frac{1}{d}\sum_j a_j^2}$$
+
+where $\gamma$ is a learned scale. This puts the representation on a consistent scale for the unembedding.
 
 **Step 2.** Multiply by the unembedding matrix $W_U \in \mathbb{R}^{V \times d}$ (where $V$ is the vocabulary size) to get logits — one score per vocabulary token:
 
@@ -237,7 +255,9 @@ This creates a balanced 2×2 design (relationship × prefix structure) enabling 
 
 Extension of T-1. For each completion in a group, run the full prompt + completion through the model with teacher forcing. At each layer $\ell$, project the residual stream at the pivot position through the final LM head (RMSNorm + unembedding) to get logit distributions $p_A^{(\ell)}$ and $p_B^{(\ell)}$.
 
-**Primary metric**: $D_{\text{KL}}(p_B^{(\ell)} \| p_A^{(\ell)})$ — how distinguishable are the two completions' logit distributions at each layer?
+**Primary metric** — how distinguishable are the two completions' logit distributions at each layer?
+
+$$D_{\text{KL}}(p_B^{(\ell)} \| p_A^{(\ell)})$$
 
 ### Method 2: Hidden-State Representational Similarity
 

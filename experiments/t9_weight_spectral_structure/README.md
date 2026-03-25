@@ -58,7 +58,9 @@ $$W = U \cdot \text{diag}(\sigma_1, \ldots, \sigma_n) \cdot V^\top$$
 where:
 - $V \in \mathbb{R}^{n \times n}$ is orthogonal — it defines $n$ "input directions" (right singular vectors)
 - $U \in \mathbb{R}^{m \times n}$ has orthonormal columns — it defines $n$ "output directions" (left singular vectors)
-- $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n \ge 0$ are the **singular values**, sorted from largest to smallest
+- The **singular values**, sorted from largest to smallest, are:
+
+$$\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n \ge 0$$
 
 **Geometric picture.** When $W$ acts on an input $x$:
 
@@ -86,9 +88,17 @@ If singular values decay fast, a small $r$ captures most of the matrix's action 
 
 $$p_i = \frac{\sigma_i^2}{\sum_{j=1}^n \sigma_j^2}$$
 
-Here $\sigma_i^2$ is the energy (variance) carried by the $i$-th channel, so $p_i$ is the fraction of total energy in channel $i$. Since all $p_i \ge 0$ and $\sum_i p_i = 1$, this is a valid probability distribution — it describes how energy is distributed across singular value modes.
+Here $\sigma_i^2$ is the energy (variance) carried by the $i$-th channel, so $p_i$ is the fraction of total energy in channel $i$. Since all $p_i \ge 0$ and
 
-**Step 2: Measure concentration.** If energy is spread uniformly, all $p_i = 1/n$ and the distribution is "flat." If energy is concentrated in a few modes, a few $p_i$ are large and the rest are near zero. The **sum of squared probabilities** $\sum_i p_i^2$ measures this concentration (known as the Simpson index in ecology, or the Herfindahl index in economics):
+$$\sum_i p_i = 1$$
+
+this is a valid probability distribution — it describes how energy is distributed across singular value modes.
+
+**Step 2: Measure concentration.** If energy is spread uniformly, all $p_i = 1/n$ and the distribution is "flat." If energy is concentrated in a few modes, a few $p_i$ are large and the rest are near zero. The **sum of squared probabilities**
+
+$$\sum_i p_i^2$$
+
+measures this concentration (known as the Simpson index in ecology, or the Herfindahl index in economics):
 
 - Maximally concentrated (all energy in one mode): $\sum p_i^2 = 1$
 - Maximally spread (uniform across $n$ modes): $\sum p_i^2 = n \cdot (1/n)^2 = 1/n$
@@ -97,7 +107,11 @@ Here $\sigma_i^2$ is the energy (variance) carried by the $i$-th channel, so $p_
 
 $$\text{PR}(W) = \frac{1}{\sum_i p_i^2} = \frac{\left(\sum_i \sigma_i^2\right)^2}{\sum_i \sigma_i^4}$$
 
-The second form follows by substituting $p_i = \sigma_i^2 / \sum_j \sigma_j^2$ and simplifying.
+The second form follows by substituting
+
+$$p_i = \sigma_i^2 / \sum_j \sigma_j^2$$
+
+and simplifying.
 
 **Intuition.** PR answers: "if the energy distribution were uniform across some number of modes, how many modes would that be?" Equivalently, it counts the number of "effectively participating" modes.
 
@@ -126,12 +140,16 @@ Renyi-2 entropy weights the dominant modes more heavily than Shannon entropy, ma
 
 $$\text{srank}(W) = \frac{\|W\|_F^2}{\|W\|_2^2} = \frac{\sum_i \sigma_i^2}{\sigma_1^2}$$
 
-where $\|W\|_F$ is the Frobenius norm (total energy) and $\|W\|_2 = \sigma_1$ is the operator norm (largest singular value).
+where $\|W\|_F$ is the Frobenius norm (total energy) and
+
+$$\|W\|_2 = \sigma_1$$
+
+is the operator norm (largest singular value).
 
 **Intuition.** Stable rank answers: "how many copies of the dominant mode would it take to account for all the energy?" If $\sigma_1$ contains half the total energy, then $\text{srank} = 2$.
 
 **Properties:**
-- Always $\ge 1$ (since $\sigma_1^2 \le \sum \sigma_i^2$)
+- Always $\ge 1$ (since the largest squared singular value cannot exceed the sum of all squared singular values)
 - Always $\le \text{rank}(W)$ (equality only if all nonzero SVs are equal)
 - More robust to tiny perturbations in the tail than PR — adding noise to the smallest SVs barely changes $\sigma_1^2$
 
@@ -161,7 +179,11 @@ This is the "perplexity" of the SV distribution. Because Shannon entropy is more
 
 ### Power-Law Fit
 
-**Why fit a power law?** The singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n$ decay from large to small, but *how fast* they decay determines compressibility. A power law is the simplest parametric model for this decay rate.
+**Why fit a power law?** The singular values, ordered as
+
+$$\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n$$
+
+decay from large to small, but *how fast* they decay determines compressibility. A power law is the simplest parametric model for this decay rate.
 
 **Model.** We assume singular values follow a Zipf-like power law:
 
@@ -179,7 +201,11 @@ So $\alpha$ is the slope of a log-log plot of singular values vs their index. We
 - $\alpha < 0.5$: Slow decay — energy is spread broadly, hard to compress
 - $\alpha = 0$: No decay — all SVs equal, maximum effective rank, incompressible
 
-**Random matrix baseline (Marchenko-Pastur).** A key question is: how does the trained spectrum compare to what we'd see from a random (untrained) matrix? For a random Gaussian matrix $W \in \mathbb{R}^{m \times n}$ with i.i.d. $\mathcal{N}(0, 1)$ entries, the squared singular values $\lambda_i = \sigma_i^2$ follow the **Marchenko-Pastur (MP) distribution** in the large-matrix limit. The MP density is:
+**Random matrix baseline (Marchenko-Pastur).** A key question is: how does the trained spectrum compare to what we'd see from a random (untrained) matrix? For a random Gaussian matrix $W \in \mathbb{R}^{m \times n}$ with i.i.d. $\mathcal{N}(0, 1)$ entries, the squared singular values
+
+$$\lambda_i = \sigma_i^2$$
+
+follow the **Marchenko-Pastur (MP) distribution** in the large-matrix limit. The MP density is:
 
 $$\rho_{\text{MP}}(\lambda) = \frac{\sqrt{(\lambda_+ - \lambda)(\lambda - \lambda_-)}}{2\pi \gamma \lambda}$$
 

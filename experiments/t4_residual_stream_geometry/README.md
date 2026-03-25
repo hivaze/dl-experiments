@@ -35,19 +35,35 @@ A naive answer is "count the nonzero singular values" (i.e., the matrix rank). B
 
 #### Setup and SVD
 
-Start with $N$ token representations $\lbrace \mathbf{h}_1, \ldots, \mathbf{h}_N \rbrace \subset \mathbb{R}^d$. In our experiment, $N = 4{,}094$ (completion tokens) and $d = 2{,}560$ (hidden dimension).
+Start with $N$ token representations
 
-**Step 1: Mean-center.** Compute the centroid $\overline{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$ and subtract it. This removes the shared offset so we measure the *spread* of representations, not their location. Form the centered data matrix:
+$$\lbrace \mathbf{h}_1, \ldots, \mathbf{h}_N \rbrace \subset \mathbb{R}^d$$
+
+In our experiment, $N = 4{,}094$ (completion tokens) and $d = 2{,}560$ (hidden dimension).
+
+**Step 1: Mean-center.** Compute the centroid and subtract it:
+
+$$\overline{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$$
+
+This removes the shared offset so we measure the *spread* of representations, not their location. Form the centered data matrix:
 
 $$\mathbf{H} \in \mathbb{R}^{N \times d}, \quad \text{row } i = \mathbf{h}_i - \overline{\mathbf{h}}$$
 
-**Step 2: Compute SVD.** The SVD factorizes $\mathbf{H} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^\top$, where $\boldsymbol{\Sigma}$ contains singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$ with $r = \min(N, d)$. Each singular value tells us how much variance the data has along the corresponding direction $\mathbf{v}_i$ (column of $\mathbf{V}$). Specifically, $\sigma_i^2$ is proportional to the variance explained by direction $i$.
+**Step 2: Compute SVD.** The SVD factorizes $\mathbf{H} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^\top$, where $\boldsymbol{\Sigma}$ contains singular values
 
-**Step 3: Normalize to a probability distribution.** The total variance is $\sum_i \sigma_i^2$. Define the fraction of variance in each direction:
+$$\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$$
+
+with $r = \min(N, d)$. Each singular value tells us how much variance the data has along the corresponding direction $\mathbf{v}_i$ (column of $\mathbf{V}$). Specifically, $\sigma_i^2$ is proportional to the variance explained by direction $i$.
+
+**Step 3: Normalize to a probability distribution.** The total variance is the sum of all squared singular values. Define the fraction of variance in each direction:
 
 $$p_i = \frac{\sigma_i^2}{\sum_{j=1}^{r} \sigma_j^2}$$
 
-Now $p_i \ge 0$ and $\sum_i p_i = 1$ — this is a probability distribution over directions, weighted by how much variance each captures.
+Now $p_i \ge 0$ and
+
+$$\sum_i p_i = 1$$
+
+This is a probability distribution over directions, weighted by how much variance each captures.
 
 #### The participation ratio formula
 
@@ -61,22 +77,32 @@ $$\text{PR} = \frac{\left(\sum_i \sigma_i^2\right)^2}{\sum_i \sigma_i^4}$$
 
 #### Why this formula works — building intuition
 
-The key insight is that $\sum_i p_i^2$ measures *concentration*. Consider two extremes:
+The key insight is that the sum of squared probabilities measures *concentration*:
+
+$$\text{concentration} = \sum_i p_i^2$$
+
+Consider two extremes:
 
 **All variance in one direction:** $p_1 = 1$, all others zero. Then $\sum p_i^2 = 1$, so $\text{PR} = 1/1 = 1$. The representations are effectively one-dimensional.
 
-**Variance spread equally across $k$ directions:** $p_1 = \cdots = p_k = 1/k$, rest zero. Then $\sum p_i^2 = k \cdot (1/k)^2 = 1/k$, so $\text{PR} = k$. This directly counts the number of active dimensions.
+**Variance spread equally across $k$ directions:**
+
+$$p_1 = \cdots = p_k = 1/k$$
+
+with the rest zero. Then $\sum p_i^2 = k \cdot (1/k)^2 = 1/k$, so $\text{PR} = k$. This directly counts the number of active dimensions.
 
 **Smoothly decaying spectrum:** If $p_i$ decays gradually (say, exponentially), PR gives a number between 1 and $r$ that reflects the "effective" number of directions — directions with tiny $p_i$ contribute $p_i^2 \approx 0$ and don't inflate the count.
 
-This is exactly the **inverse Simpson index** from ecology (where it counts effective species). In information theory, it equals $\exp(H_2)$ where $H_2 = -\ln \sum_i p_i^2$ is the Rényi entropy of order 2.
+This is exactly the **inverse Simpson index** from ecology (where it counts effective species). In information theory, it equals $\exp(H_2)$ where the Rényi entropy of order 2 is:
+
+$$H_2 = -\ln \sum_i p_i^2$$
 
 #### Why PR over alternatives
 
 | Metric | Problem |
 |--------|---------|
 | **Rank** (count of nonzero $\sigma_i$) | Always equals $\min(N, d)$ due to floating-point noise. Need an arbitrary threshold to make it useful. |
-| **Shannon entropy** $-\sum p_i \ln p_i$ | Unbounded (grows as $\ln r$), hard to interpret as "number of dimensions." Also more sensitive to the tail of tiny eigenvalues. |
+| **Shannon entropy** | Unbounded (grows as $\ln r$), hard to interpret as "number of dimensions." Also more sensitive to the tail of tiny eigenvalues. |
 | **Top-$k$ variance explained** | Requires choosing $k$; different $k$ values tell different stories. |
 | **PR** | Bounded in $[1, r]$, directly interpretable as an effective count, insensitive to near-zero eigenvalues ($p_i^2 \approx 0$). |
 
@@ -111,7 +137,9 @@ To disentangle these, decompose each vector into its shared and unique parts:
 
 $$\mathbf{h}_i = \underbrace{\overline{\mathbf{h}}}_{\text{shared mean}} + \underbrace{\tilde{\mathbf{h}}_i}_{\text{deviation from mean}}$$
 
-where $\overline{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$. By construction, $\sum_i \tilde{\mathbf{h}}_i = \mathbf{0}$.
+where
+
+$$\overline{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i \quad \text{and by construction,} \quad \sum_i \tilde{\mathbf{h}}_i = \mathbf{0}$$
 
 Now expand the inner product between any two vectors:
 
@@ -125,7 +153,11 @@ $$\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \
 
 All vectors look similar — but only because they share the same large mean direction, not because of intrinsic clustering.
 
-**The diagnostic:** Compute $\overline{c}$ on the centered vectors $\tilde{\mathbf{h}}_i = \mathbf{h}_i - \overline{\mathbf{h}}$. This removes term (A) entirely, isolating the intrinsic anisotropy (C). If centered cosine $\approx 0$, all observed anisotropy was due to the shared mean. If centered cosine $\gg 0$, there's genuine geometric clustering beyond the mean direction.
+**The diagnostic:** Compute $\overline{c}$ on the centered vectors
+
+$$\tilde{\mathbf{h}}_i = \mathbf{h}_i - \overline{\mathbf{h}}$$
+
+This removes term (A) entirely, isolating the intrinsic anisotropy (C). If centered cosine $\approx 0$, all observed anisotropy was due to the shared mean. If centered cosine $\gg 0$, there's genuine geometric clustering beyond the mean direction.
 
 ### 3. Spectral Flatness
 
@@ -140,7 +172,11 @@ We want a metric that distinguishes "flat spectrum" from "peaked spectrum" — i
 
 #### Definition
 
-Given the covariance eigenvalues $\lbrace \lambda_i \rbrace_{i=1}^{m}$ (where $m$ is the count of positive eigenvalues, and $\lambda_i = \sigma_i^2 / (N-1)$ converts singular values to covariance eigenvalues), the **spectral flatness** is:
+Given the covariance eigenvalues
+
+$$\lbrace \lambda_i \rbrace_{i=1}^{m} \quad \text{where} \quad \lambda_i = \sigma_i^2 / (N-1)$$
+
+(here $m$ is the count of positive eigenvalues, and the conversion maps singular values to covariance eigenvalues), the **spectral flatness** is:
 
 $$\text{SF} = \frac{\text{geometric mean of } \lambda_i}{\text{arithmetic mean of } \lambda_i} = \frac{\left(\prod_{i=1}^{m} \lambda_i\right)^{1/m}}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i}$$
 
@@ -180,11 +216,11 @@ $$\overline{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \left(\text{mean cosi
 
 $$\overline{c}_{\text{inter}} = \text{mean cosine between pairs from different categories}$$
 
-If $\overline{c}_{\text{intra}} > \overline{c}_{\text{inter}}$, tokens within a category are more similar to each other than to outsiders — the category has geometric coherence.
+If the intra-category similarity exceeds the inter-category similarity, tokens within a category are more similar to each other than to outsiders — the category has geometric coherence.
 
 #### The separation ratio
 
-The raw difference $\overline{c}_{\text{intra}} - \overline{c}_{\text{inter}}$ is hard to interpret in isolation (is 0.05 a lot?). We normalize by the inter-category baseline:
+The raw difference between intra- and inter-category similarity is hard to interpret in isolation (is 0.05 a lot?). We normalize by the inter-category baseline:
 
 $$S = \frac{\overline{c}_{\text{intra}} - \overline{c}_{\text{inter}}}{|\overline{c}_{\text{inter}}| + \epsilon}$$
 
@@ -202,7 +238,11 @@ The transformer's key architectural feature is the **residual connection**: each
 
 $$\mathbf{h}^{(\ell)} = \mathbf{h}^{(\ell-1)} + f_\ell\left(\mathbf{h}^{(\ell-1)}\right)$$
 
-where $f_\ell$ is the layer's transformation (attention + MLP + normalizations) and $\boldsymbol{\delta}_\ell = f_\ell(\mathbf{h}^{(\ell-1)})$ is its **update vector**. The residual stream at layer $\ell$ is the sum of the embedding plus all updates so far:
+where $f_\ell$ is the layer's transformation (attention + MLP + normalizations) and its **update vector** is:
+
+$$\boldsymbol{\delta}_\ell = f_\ell(\mathbf{h}^{(\ell-1)})$$
+
+The residual stream at layer $\ell$ is the sum of the embedding plus all updates so far:
 
 $$\mathbf{h}^{(\ell)} = \mathbf{h}^{(\text{emb})} + \sum_{i=0}^{\ell} \boldsymbol{\delta}_i$$
 
@@ -303,7 +343,7 @@ Tokens are grouped by their prompt's category. We compute:
 
 - **Intra-category similarity**: Mean cosine similarity between random token pairs *within* the same category
 - **Inter-category similarity**: Mean cosine similarity between tokens from *different* categories
-- **Cluster separation ratio**: $(c_{\text{intra}} - c_{\text{inter}}) / (|c_{\text{inter}}| + \epsilon)$ — higher means categories are more distinguishable
+- **Cluster separation ratio** (defined in the mathematical framework as $S$) — higher means categories are more distinguishable
 - **Centroid analysis**: Cosine similarity between category centroids at each layer
 
 ### 5. Layer Impact Analysis

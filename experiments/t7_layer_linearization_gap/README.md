@@ -210,13 +210,29 @@ $$\mathbf{v}_0 = \text{random unit vector}$$
 
 $$\mathbf{v}_{k+1} = \frac{\mathbf{J} \mathbf{v}_k}{\|\mathbf{J} \mathbf{v}_k\|}$$
 
-After $K$ iterations, $\|\mathbf{J} \mathbf{v}_K\| \approx \sigma_{\max}$. Each $\mathbf{J} \mathbf{v}$ product is computed via central differences (no need to store $\mathbf{J}$):
+After $K$ iterations, the approximation
+
+$$\|\mathbf{J} \mathbf{v}_K\| \approx \sigma_{\max}$$
+
+holds. Each $\mathbf{J} \mathbf{v}$ product is computed via central differences (no need to store $\mathbf{J}$):
 
 $$\mathbf{J} \mathbf{v} \approx \frac{g(\mathbf{x} + \varepsilon \|\mathbf{x}\| \mathbf{v}) - g(\mathbf{x} - \varepsilon \|\mathbf{x}\| \mathbf{v})}{2\varepsilon \|\mathbf{x}\|}$$
 
-**Convergence.** After $K$ iterations, error is $\mathcal{O}\big((\sigma_2/\sigma_1)^K\big)$ where $\sigma_1, \sigma_2$ are the two largest singular values. With $K=5$ and typical ratio $\sigma_2/\sigma_1 \sim 0.5\text{--}0.8$, the error is ~3-33%.
+**Convergence.** After $K$ iterations, the error is
 
-**Interpretation for stability.** The full layer (with residual connection) has Jacobian $\mathbf{I} + \mathbf{J}_g$. If $\|\mathbf{J}_g\|_2 < 1$, every perturbation shrinks through the layer — the layer is contractive. If $\|\mathbf{J}_g\|_2 > 1$, some perturbation directions get amplified. For stable propagation through 36 layers, we need most layers to be contractive (or at least not strongly expansive).
+$$\mathcal{O}\big((\sigma_2/\sigma_1)^K\big)$$
+
+where $\sigma_1$ and $\sigma_2$ are the two largest singular values. With $K=5$ and typical ratio
+
+$$\sigma_2/\sigma_1 \sim 0.5\text{--}0.8$$
+
+the error is ~3-33%.
+
+**Interpretation for stability.** The full layer (with residual connection) has Jacobian $\mathbf{I} + \mathbf{J}_g$. The layer is contractive or expansive depending on the spectral norm:
+
+$$\|\mathbf{J}_g\|_2 < 1 \quad \text{(contractive)} \qquad \|\mathbf{J}_g\|_2 > 1 \quad \text{(expansive)}$$
+
+If contractive, every perturbation shrinks through the layer. If expansive, some perturbation directions get amplified. For stable propagation through 36 layers, we need most layers to be contractive (or at least not strongly expansive).
 
 ### Mean Amplification: Typical Behavior
 
@@ -241,7 +257,11 @@ So mean amplification $\approx \|\mathbf{J}\|_F / \sqrt{d}$, the RMS (root-mean-
 
 A layer can be locally linear but globally nonlinear. Think of a function like $g(x) = x^2$: at any point, the tangent line is a good local fit, but different points have different slopes. Similarly, a transformer layer might apply smooth, nearly-linear attention routing at each input, but the *routing pattern itself* changes with input content — so the Jacobian at input $\mathbf{x}_1$ is a different matrix than at input $\mathbf{x}_2$.
 
-**Measuring consistency.** Pick a random direction $\hat{\mathbf{d}}$, and compute $\mathbf{J}(\mathbf{x}_i) \hat{\mathbf{d}}$ at multiple data points $\mathbf{x}_1, \ldots, \mathbf{x}_K$. If the Jacobian is the same everywhere, all these vectors should point in the same direction. We measure this via pairwise cosine similarity:
+**Measuring consistency.** Pick a random direction $\hat{\mathbf{d}}$, and compute $\mathbf{J}(\mathbf{x}_i) \hat{\mathbf{d}}$ at multiple data points
+
+$$\mathbf{x}_1, \ldots, \mathbf{x}_K$$
+
+If the Jacobian is the same everywhere, all these vectors should point in the same direction. We measure this via pairwise cosine similarity:
 
 $$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \cos\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}, \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
 
@@ -250,7 +270,15 @@ $$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \c
 
 **Why consistency can be low even when the perturbation gap is low:** Consider a layer that performs context-dependent attention routing. At each input $\mathbf{x}$, the softmax attention weights are locally smooth (small perturbations produce smooth responses → low gap). But different inputs produce *different* attention patterns, so the Jacobian at $\mathbf{x}_1$ is a different matrix than at $\mathbf{x}_2$. The layer is a smooth function everywhere, but it's a *different* smooth function at each point.
 
-**Connection to global linear replacement (Method 7):** When fitting $\mathbf{W} = \arg\min \sum_k \|g(\mathbf{x}_k) - \mathbf{W}\mathbf{x}_k\|^2$, the least-squares solution is $\mathbf{W} = (\sum_k g(\mathbf{x}_k)\mathbf{x}_k^\top)(\sum_k \mathbf{x}_k \mathbf{x}_k^\top)^{-1}$, which is a data-weighted average of the per-point Jacobians. If Jacobians are consistent ($C_g \to 1$), this average is close to any individual Jacobian and the replacement works. If Jacobians vary ($C_g \ll 1$), the average washes out the input-specific structure and produces a poor approximation that may be worse than the identity.
+**Connection to global linear replacement (Method 7):** When fitting the least-squares problem
+
+$$\mathbf{W} = \arg\min \sum_k \|g(\mathbf{x}_k) - \mathbf{W}\mathbf{x}_k\|^2$$
+
+the solution is
+
+$$\mathbf{W} = \Big(\sum_k g(\mathbf{x}_k)\mathbf{x}_k^\top\Big)\Big(\sum_k \mathbf{x}_k \mathbf{x}_k^\top\Big)^{-1}$$
+
+which is a data-weighted average of the per-point Jacobians. If Jacobians are consistent ($C_g \to 1$), this average is close to any individual Jacobian and the replacement works. If Jacobians vary ($C_g \ll 1$), the average washes out the input-specific structure and produces a poor approximation that may be worse than the identity.
 
 ## Methods
 
@@ -258,7 +286,8 @@ $$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \c
 
 For each layer with input $\mathbf{x}$ and transform $g(\mathbf{x})$:
 1. Generate 16 random unit perturbation directions $\mathbf{d}_i$
-2. Scale perturbation to bf16-safe magnitude: $\boldsymbol{\delta}_i = \varepsilon \|\mathbf{x}\| \hat{\mathbf{d}}_i$ ($\varepsilon = 0.05$)
+2. Scale perturbation to bf16-safe magnitude ($\varepsilon = 0.05$):
+$$\boldsymbol{\delta}_i = \varepsilon \|\mathbf{x}\| \hat{\mathbf{d}}_i$$
 3. Estimate Jacobian-vector product via central differences: $\mathbf{J}\boldsymbol{\delta} \approx (g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x}-\boldsymbol{\delta})) / 2$
 4. Compare actual displacement $g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x})$ to linear prediction $\mathbf{J}\boldsymbol{\delta}$
 5. Gap $= \|\text{actual} - \text{linear}\| / \|\text{actual}\|$, averaged over directions and tokens
@@ -270,8 +299,10 @@ Tests scale-invariance by comparing $g(\mathbf{x})$ to $\mathbf{J}\mathbf{x}$ (t
 ### Method 3: Attention vs MLP Decomposition
 
 Applies the perturbation gap separately to:
-- **Attention sublayer**: $f_{\text{attn}}(\mathbf{x}) = \mathbf{W}_o \cdot \text{Attn}(\text{LN}_1(\mathbf{x}))$ — nonlinearity from softmax + RMSNorm
-- **MLP sublayer**: $f_{\text{mlp}}(\mathbf{x}) = \mathbf{W}_{\text{down}} \cdot \text{SwiGLU}(\text{LN}_2(\mathbf{x} + f_{\text{attn}}(\mathbf{x})))$ — nonlinearity from SiLU gating + RMSNorm
+- **Attention sublayer** (nonlinearity from softmax + RMSNorm):
+$$f_{\text{attn}}(\mathbf{x}) = \mathbf{W}_o \cdot \text{Attn}(\text{LN}_1(\mathbf{x}))$$
+- **MLP sublayer** (nonlinearity from SiLU gating + RMSNorm):
+$$f_{\text{mlp}}(\mathbf{x}) = \mathbf{W}_{\text{down}} \cdot \text{SwiGLU}(\text{LN}_2(\mathbf{x} + f_{\text{attn}}(\mathbf{x})))$$
 
 Note: the MLP sublayer function includes the attention computation (since its input depends on it), measuring the *marginal* nonlinearity of adding MLP to the attention output.
 
@@ -291,9 +322,12 @@ Perturbation gap computed at $\varepsilon \in \lbrace 0.01, 0.02, 0.05, 0.1, 0.2
 Methods 1-5 measure properties of the Jacobian at a single operating point. Method 6 asks a different question: **how much does the Jacobian change across different inputs?** This directly predicts whether a single global linear map $W$ can approximate the layer across all inputs (Method 7).
 
 For each layer, we:
-1. Pick $D=8$ shared random unit directions $\hat{d}_1, ..., \hat{d}_D$ in $\mathbb{R}^{2560}$.
-2. For each of $K=10$ calibration prompts, compute the JVP (Jacobian-vector product) at the last completion token: $v_k^{(d)} = J(x_k) \hat{d} / \|J(x_k) \hat{d}\|$ — the normalized output direction when perturbing in direction $\hat{d}$.
-3. For each direction $d$, compute the mean pairwise cosine similarity of $\lbrace v_1^{(d)}, ..., v_K^{(d)} \rbrace$ across all prompts.
+1. Pick $D=8$ shared random unit directions in $\mathbb{R}^{2560}$:
+$$\hat{d}_1, \ldots, \hat{d}_D$$
+2. For each of $K=10$ calibration prompts, compute the JVP (Jacobian-vector product) at the last completion token — the normalized output direction when perturbing in direction $\hat{d}$:
+$$v_k^{(d)} = J(x_k) \hat{d} / \|J(x_k) \hat{d}\|$$
+3. For each direction $d$, compute the mean pairwise cosine similarity across all prompts of:
+$$\lbrace v_1^{(d)}, \ldots, v_K^{(d)} \rbrace$$
 4. Average across directions → **Jacobian consistency score**.
 
 If the Jacobian is the same matrix at all inputs (globally linear), all $v_k^{(d)}$ are identical → consistency $= 1.0$. If the Jacobian varies strongly (globally nonlinear), they point in different directions → consistency $\to 0$.
@@ -304,11 +338,15 @@ Methods 1-6 measure local properties (how the Jacobian behaves at or near a sing
 
 For each target layer, we:
 1. **Collect activation pairs**: Run all calibration data through the model, recording each layer's input $X \in \mathbb{R}^{N \times d}$ and output $Y \in \mathbb{R}^{N \times d}$ (where $N$ is total tokens across all sequences).
-2. **Fit a linear map**: Solve $W = \arg\min_W \|Y - WX\|_F^2$ via least-squares (computed in float32 for numerical stability).
-3. **Low-rank variants**: Fit the residual $R = Y - X \approx W_r X$, then truncate $W_r$'s SVD to rank 64 or 256. This preserves the skip connection (identity) — architecturally appropriate since transformer layers compute $h_{i+1} = h_i + f(h_i)$.
+2. **Fit a linear map** via least-squares (computed in float32 for numerical stability):
+$$W = \arg\min_W \|Y - WX\|_F^2$$
+3. **Low-rank variants**: Fit the residual $R = Y - X \approx W_r X$, then truncate $W_r$'s SVD to rank 64 or 256. This preserves the skip connection (identity) — architecturally appropriate since transformer layers compute:
+$$h_{i+1} = h_i + f(h_i)$$
 4. **Evaluate**: Hook the replacement into the model (output = $Wx$ instead of the full attention+MLP computation) and measure loss.
 
-The **recovery metric** $= 1 - \frac{\Delta L_{\text{replacement}}}{\Delta L_{\text{knockout}}}$ tells us what fraction of the knockout damage (from T-2) is recovered by the linear surrogate. Values near 100% mean the layer is essentially linear; negative values mean the linear map is actively worse than skipping the layer entirely.
+The **recovery metric** tells us what fraction of the knockout damage (from T-2) is recovered by the linear surrogate:
+
+$$\text{Recovery} = 1 - \frac{\Delta L_{\text{replacement}}}{\Delta L_{\text{knockout}}}$$ Values near 100% mean the layer is essentially linear; negative values mean the linear map is actively worse than skipping the layer entirely.
 
 This directly tests the prediction from Method 6: layers with high Jacobian consistency should be globally replaceable, while layers with low consistency should resist global linear approximation.
 
@@ -364,9 +402,15 @@ The fitted nonlinearity order across all layers is **0.61--0.84**, consistently 
 
 **Mean amplification $< 1$ for layers 1-35 (remarkably uniform):** All 35 non-embedding layers are contractive on average, with mean amplification ranging from 0.534 to 0.806 (mean 0.652, std = 0.058 — very tight). This uniformity across 35 layers is striking and suggests a strong training-time constraint on Jacobian norms. The mean amplification relates to the Frobenius norm of the Jacobian: $\mathbb{E}[\|\mathbf{J}\mathbf{d}\|] \sim \|\mathbf{J}\|_F / \sqrt{d}$. With $\|\mathbf{J}\|_F / \sqrt{d} < 1$, the Jacobian has Frobenius norm less than $\sqrt{d}$, meaning its squared singular values sum to less than $d$. Since most of the $d$ singular values must be $< 1$, the Jacobian is "mostly contractive" with possibly a few expanding directions (captured by the spectral norm being near or above 1).
 
-**Dynamical systems interpretation:** The residual connection makes the full layer map $F(\mathbf{x}) = \mathbf{x} + g(\mathbf{x})$ with Jacobian $\mathbf{J}_F = \mathbf{I} + \mathbf{J}_g$. For stability:
+**Dynamical systems interpretation:** The residual connection makes the full layer map $F(\mathbf{x}) = \mathbf{x} + g(\mathbf{x})$ with Jacobian
+
+$$\mathbf{J}_F = \mathbf{I} + \mathbf{J}_g$$
+
+For stability:
 - We need the spectral radius $\rho(\mathbf{I} + \mathbf{J}_g) < 1$ for convergence (in an iterative sense)
-- Since $\mathbf{J}_g$ is contractive on average ($\|\mathbf{J}_g\|_F / \sqrt{d} < 1$), most eigenvalues of $\mathbf{J}_g$ are small, making $\mathbf{J}_F \approx \mathbf{I}$ — the layer makes small, stable corrections to the residual stream
+- Since $\mathbf{J}_g$ is contractive on average (i.e.,
+$$\|\mathbf{J}_g\|_F / \sqrt{d} < 1$$
+), most eigenvalues of $\mathbf{J}_g$ are small, making $\mathbf{J}_F \approx \mathbf{I}$ — the layer makes small, stable corrections to the residual stream
 - The product of all 36 layer Jacobians determines the end-to-end sensitivity: since most have spectral norm near 1, the network avoids both vanishing and exploding gradients
 - **Jacobian consistency adds a second stability dimension:** Layers with consistent Jacobians ($C_g \to 1$) behave like fixed linear operators regardless of input — the dynamical system is essentially autonomous. Layers with low consistency ($C_g \ll 1$) behave like time-varying (input-varying) linear operators — the dynamics are non-autonomous and harder to approximate with fixed-point analysis. The general increase of consistency with depth (0.36 → 0.88) suggests the model transitions from adaptive, context-sensitive processing to fixed, context-invariant output formatting
 
@@ -419,7 +463,9 @@ While the perturbation gap measures how nonlinear a layer is *at a given input*,
 
 **Full-rank replacement**: $Y = WX$ fitted via least-squares across all calibration tokens.
 
-**Low-rank replacement** (residual-preserving): Fits the residual $R = Y - X \approx W_r X$, truncates $W_r$ to the target rank via SVD, then applies $Y \approx X + W_r^{(\text{lr})} X$. This preserves the skip connection (identity) — architecturally appropriate since transformer layers compute $h_{i+1} = h_i + f(h_i)$.
+**Low-rank replacement** (residual-preserving): Fits the residual $R = Y - X \approx W_r X$, truncates $W_r$ to the target rank via SVD, then applies $Y \approx X + W_r^{(\text{lr})} X$. This preserves the skip connection (identity) — architecturally appropriate since transformer layers compute:
+
+$$h_{i+1} = h_i + f(h_i)$$
 
 | Layer | Knockout Δ | Full-Rank Δ | FR Recovery | Rank-256 Δ | R256 Recovery | Rank-64 Δ | R64 Recovery |
 |-------|-----------|-------------|-------------|-----------|--------------|----------|-------------|
@@ -480,7 +526,11 @@ T-9 found a significant negative correlation between weight effective rank and l
 
 6. **MLP drives late-layer nonlinearity**: In layers 33-35, MLP gap increases sharply (0.14→0.24) while attention remains stable (~0.11). The nonlinearity order also peaks (0.84, though R² is low — see caveat in multi-scale section), suggesting higher-order feature interactions via SwiGLU gating.
 
-7. **Most layers are remarkably uniformly contractive**: Mean Jacobian amplification $< 1$ for layers 1-35, with very tight spread (mean 0.652, std 0.058). This uniformity suggests a training-time constraint on Jacobian norms. Combined with the residual connection ($\mathbf{x} \to \mathbf{x} + g(\mathbf{x})$ where $\|g(\mathbf{x})\| \sim 0.5\|\mathbf{x}\|$), this creates a stable dynamical system. The Jacobian $\mathbf{J}_F = \mathbf{I} + \mathbf{J}_g$ has spectral radius near 1, ensuring neither vanishing nor exploding gradients.
+7. **Most layers are remarkably uniformly contractive**: Mean Jacobian amplification $< 1$ for layers 1-35, with very tight spread (mean 0.652, std 0.058). This uniformity suggests a training-time constraint on Jacobian norms. Combined with the residual connection ($\mathbf{x} \to \mathbf{x} + g(\mathbf{x})$ where $\|g(\mathbf{x})\| \sim 0.5\|\mathbf{x}\|$), this creates a stable dynamical system. The Jacobian
+
+$$\mathbf{J}_F = \mathbf{I} + \mathbf{J}_g$$
+
+has spectral radius near 1, ensuring neither vanishing nor exploding gradients.
 
 8. **Linear approximation has a narrow validity domain**: The universal non-monotonicity at $\varepsilon=0.2$ (all 36/36 layers show gap increasing after decreasing at $\varepsilon=0.1$) means perturbation-based linearization is fundamentally limited. Linear surrogates are valid only for small perturbations ($\varepsilon \leq 0.1$); beyond that, the function enters a qualitatively different regime. This constrains practical applications of linear surrogates to scenarios where inputs stay close to the calibration manifold.
 

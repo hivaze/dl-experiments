@@ -45,11 +45,19 @@ All downstream layers $\ell > k$ then receive $\mathbf{h}^{(k-1)}$ instead of $\
 
 We need a scalar score that captures how much a knockout damages the model. We use **cross-entropy loss**, but only on **completion tokens** — positions after the prompt, where the model is predicting its own previously-generated greedy output.
 
-Given input token sequence $(x_1, \ldots, x_T)$ with prompt tokens at positions $1 \ldots P$ and completion tokens at positions $P{+}1 \ldots T$, the loss is:
+Given input token sequence
+
+$$(x_1, \ldots, x_T)$$
+
+with prompt tokens at positions $1 \ldots P$ and completion tokens at positions $P{+}1 \ldots T$, the loss is:
 
 $$\mathcal{L} = -\frac{1}{T - P} \sum_{t=P+1}^{T} \log p_\theta(x_t \mid x_{<t})$$
 
-where $p_\theta(x_t \mid x_{<t})$ is the model's predicted probability for the actual next token.
+where
+
+$$p_\theta(x_t \mid x_{<t})$$
+
+is the model's predicted probability for the actual next token.
 
 **Why only completion tokens?** Prompt tokens are the "given" context — predicting them tests the model's language modeling ability on human-written text, which is easy (many valid continuations exist). Completion tokens are the model's *own* greedy output — the single most-likely token at each step. The intact model assigns very high probability to its own greedy choices (baseline loss = 0.0894 nats, corresponding to ~91% average top-1 probability). This creates an extremely sensitive probe: even small perturbations to the model's internals cause the predicted distribution to shift away from its own greedy trajectory, producing measurable loss increases. Prompt-token loss would be a blunter instrument.
 
@@ -59,17 +67,29 @@ For layer $i$, define:
 
 $$R_i = \frac{\mathcal{L}_{\text{knockout}_i}}{\mathcal{L}_{\text{baseline}}}$$
 
-where $\mathcal{L}_{\text{knockout}_i}$ is the loss with layer $i$ removed. This ratio is unitless and directly interpretable:
+where
+
+$$\mathcal{L}_{\text{knockout}_i}$$
+
+is the loss with layer $i$ removed. This ratio is unitless and directly interpretable:
 
 - $R_i = 1$: removing layer $i$ has zero effect (perfectly redundant)
 - $R_i = 2$: loss doubles (moderately critical)
 - $R_i = 100$: loss increases 100-fold (catastrophically critical)
 
-We use the ratio rather than absolute delta $\Delta L_i = \mathcal{L}_{\text{knockout}_i} - \mathcal{L}_{\text{baseline}}$ because the ratio is scale-invariant — it means the same thing regardless of baseline loss magnitude.
+We use the ratio rather than the absolute delta
+
+$$\Delta L_i = \mathcal{L}_{\text{knockout}_i} - \mathcal{L}_{\text{baseline}}$$
+
+because the ratio is scale-invariant — it means the same thing regardless of baseline loss magnitude.
 
 ### Synergy: Detecting Inter-Layer Circuits
 
-If layers contributed independently, removing two layers simultaneously would cause damage equal to the sum of their individual damages. Formally, if $\Delta L_i = \mathcal{L}_{\text{knockout}_i} - \mathcal{L}_{\text{baseline}}$ is the damage from removing layer $i$ alone, then under independence:
+If layers contributed independently, removing two layers simultaneously would cause damage equal to the sum of their individual damages. Formally, define the damage from removing layer $i$ alone as
+
+$$\Delta L_i = \mathcal{L}_{\text{knockout}_i} - \mathcal{L}_{\text{baseline}}$$
+
+Then under independence:
 
 $$\Delta L_{i,j}^{\text{expected}} = \Delta L_i + \Delta L_j$$
 
@@ -173,8 +193,8 @@ The pair analysis below confirms that layer 6 is not just individually critical 
 
 Most super-additive pairs:
 
-| Pair | $\Delta L_{i,j}$ | $\Delta L_i + \Delta L_j$ | Synergy $S$ | Interpretation |
-|------|-------------------|---------------------------|-------------|----------------|
+| Pair | Observed | Sum of singles | Synergy $S$ | Interpretation |
+|------|----------|----------------|-------------|----------------|
 | (5, 6) | +7.17 | +3.64 | **+3.53** | Tightly coupled circuit |
 | (6, 7) | +4.41 | +2.37 | **+2.04** | Layer 6 hub extends to 7 |
 | (1, 6) | +4.17 | +2.47 | **+1.70** | Cross-phase coupling |
@@ -185,7 +205,11 @@ Most super-additive pairs:
 
 **Layer 6 is a circuit hub.** It appears in 4 of the top 5 synergistic pairs. This means layer 6 doesn't just perform an important *standalone* computation — it is the *nexus* of inter-layer dependencies. Its update $f_6(\cdot)$ both consumes features produced by earlier layers (5, 1) and produces features consumed by later layers (7, 12).
 
-**The (5, 6) circuit is the strongest dependency.** Synergy of +3.53 means removing both layers causes 3.53 nats of *extra* damage beyond what their individual knockouts predict. Why? The additive null hypothesis $\Delta L_{5,6} = \Delta L_5 + \Delta L_6$ assumes independence — that layer 5's contribution doesn't affect what layer 6 computes, and vice versa. The large positive synergy rejects this: layer 5 produces intermediate representations that layer 6 specifically consumes. When only layer 5 is removed, layer 6 receives slightly wrong inputs but still runs and partially compensates. When only layer 6 is removed, its input from layer 5 is wasted but doesn't hurt. When *both* are removed, the entire two-layer computation is gone with no compensation — hence the super-additive damage.
+**The (5, 6) circuit is the strongest dependency.** Synergy of +3.53 means removing both layers causes 3.53 nats of *extra* damage beyond what their individual knockouts predict. Why? The additive null hypothesis
+
+$$\Delta L_{5,6} = \Delta L_5 + \Delta L_6$$
+
+assumes independence — that layer 5's contribution doesn't affect what layer 6 computes, and vice versa. The large positive synergy rejects this: layer 5 produces intermediate representations that layer 6 specifically consumes. When only layer 5 is removed, layer 6 receives slightly wrong inputs but still runs and partially compensates. When only layer 6 is removed, its input from layer 5 is wasted but doesn't hurt. When *both* are removed, the entire two-layer computation is gone with no compensation — hence the super-additive damage.
 
 **The (6, 12) long-range coupling.** These layers are 6 apart, yet synergy is +1.45 — significant. In the residual stream model, this is possible because layer 6's update $f_6(\mathbf{h}^{(5)})$ is added to the residual and can be read by any later layer, not just layer 7. Layer 12 apparently reads features written by layer 6, bypassing layers 7–11 via the residual stream. This is a concrete example of the "residual stream as communication bus" hypothesis.
 
