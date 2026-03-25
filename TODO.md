@@ -59,6 +59,71 @@ For each prompt, force-decode semantically related completions (synonyms, antony
 - **Divergence onset**: identify the first layer where antonym representations separate beyond a statistical threshold (synonym mean − 2σ).
 - Cross-reference with T-1 (logit lens phases), T-4 (geometry), T-7 (linearization gap). Hypothesis: divergence onset aligns with T-1's "prediction formation" phase and T-7's high-nonlinearity layers.
 
+### T-18. Spectral-Guided PEFT Validation
+Validate the spectral predictions from T-9, T-7, and T-4 by actually training LoRA adapters with different rank/layer configurations on Qwen3-4B-Instruct-2507.
+
+**Core questions:**
+1. Does phase-aware LoRA rank allocation (low rank for Q/K in plateau, high rank for MLP in late layers) outperform uniform-rank LoRA at the same parameter budget?
+2. Are bottleneck layers (15–24) critical for OOD adaptation?
+3. How does LoRA training change weight spectral structure? (Before/after SVD comparison)
+
+**Task: GSM8K math fine-tuning** (exact-match accuracy). OOD eval on SVAMP. Calibration perplexity on existing completions from `data/text_completions/`.
+
+**Configs (4 total, ~20–25 min each, 2 parallel on 2 GPUs → ~50 min training):**
+
+| Config | Strategy | Key Idea | GPU |
+|--------|----------|----------|-----|
+| A | Uniform rank=16, all 7 modules, all 36 layers | Baseline | 0 |
+| B | Phase-aware: Q/K r=8 plateau / r=24 late, gate r=12/48, V/up/down r=24 | T-9 spectral-guided | 1 |
+| F | Uniform rank=16, layers 0–14 + 25–35 (skip bottleneck 15–24) | Tests blog OOD prediction | 0 |
+| H | Uniform rank=16, layers 25–35 only | Common "train last N" shortcut | 1 |
+
+Round 1 (parallel): A on cuda:0, B on cuda:1
+Round 2 (parallel): F on cuda:0, H on cuda:1
+
+**Config B phase-aware ranks** (from T-9 spectral data):
+
+| Module | Plateau (L0–16) | Late (L17–35) | T-9 Rationale |
+|--------|----------------|---------------|---------------|
+| q_proj | 8 | 24 | Lowest eff rank (0.235 → 0.270) |
+| k_proj | 8 | 24 | Low eff rank (0.356 → 0.393) |
+| v_proj | 24 | 24 | High rank everywhere (~0.61) |
+| o_proj | 12 | 24 | Moderate (0.393 → 0.449) |
+| gate_proj | 12 | 48 | Largest plateau/late gap (+0.17) |
+| up_proj | 24 | 24 | High rank everywhere (~0.68) |
+| down_proj | 24 | 24 | High rank everywhere (~0.64) |
+
+Total params tuned to match Config A's ~6.3M budget.
+
+**Key predictions:**
+- B > A on GSM8K at same param budget (validates spectral guidance)
+- A vs F: <2% GSM8K gap but >5% SVAMP gap (bottleneck critical for OOD)
+- A vs H: H matches on GSM8K, falls behind on SVAMP ("train last N" fails OOD)
+
+**Post-training spectral analysis** (Phase 3, ~5 min, no training):
+- Extract merged weights (base + LoRA) for Config B. Run SVD on all 252 matrices.
+- Compare pre- vs post-training: delta effective rank, spectral overlap of LoRA delta with base weight's top singular subspace.
+- Measure participation ratio at L16 pre/post — does the bottleneck widen?
+
+**Training setup:**
+- 2,000 GSM8K train examples, 2 epochs (~250 steps), lr=2e-4 cosine, AdamW, bf16
+- Eval: GSM8K test (1,319), SVAMP (1,000), calibration perplexity
+- Use peft `rank_pattern`/`alpha_pattern` for non-uniform ranks (peft 0.6+)
+- **Total runtime: ~1.5–2h** (50 min training + 10 min baselines + 15 min evals + 5 min spectral)
+
+**Future extensions** (if results are interesting, separate runs):
+- Inverse-spectral control (high rank where T-9 says low capacity — negative control)
+- Module ablation: Q/K-only vs MLP-only vs Q/K+MLP (validates T-9 routing/content split)
+- Bottleneck-only config (L15–24) and distributed-processing-only (L6–15)
+
+**Cross-references:**
+- T-9: spectral rank ratios → Config B rank allocation + post-training spectral delta
+- T-7: CE recovery per layer → bottleneck resistance (layers 16–24 at 44–65% recovery)
+- T-4: PR bottleneck (L16: 2.3), geometric phases → layer groups for F/H, post-training PR
+- T-2: layer criticality (L0: 99.6×, L6: 21.7×) → all configs include these critical layers
+
+**Dependencies:** `peft` (add via `poetry add peft`), `datasets` (already available)
+
 ---
 
 ## Architecture Surgery & Ablation

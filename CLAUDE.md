@@ -104,6 +104,6 @@ Run `python3 /tmp/check_latex.py` (or recreate it) to scan all READMEs for forbi
 - Research agenda in `TODO.md` — T-1..T-17, D-1..D-6, VL-1..VL-8
 - Completed text experiments: T-1 Logit Lens, T-2 Layer Knockout, T-3 Layer Swap Cost, T-4 Residual Stream Geometry, T-7 Layer Linearization Gap, T-9 Weight Spectral Structure, T-15 Normalization, T-17 Contrastive Completion Trajectories
 - Completed standalone: Layer Shuffle Recovery (`experiments/layer_shuffle_recovery/`), Fish Speech S2 Pro (`experiments/fish_speech_s2_pro/`), ACE-Step v1.5 (`experiments/acestep_v15/`)
-- Planned text: T-5 Cross-Model Layer Transplant, T-6 Layer Doubling, T-8 Thinking vs Answer Token Routing, T-10a/b Attention Architecture & Kernels, T-11 Quantization, T-12 CUDA Graphs, T-13 KV-Cache, T-14 NIXL, T-16 Activation Functions
+- Planned text: T-5 Cross-Model Layer Transplant, T-6 Layer Doubling, T-8 Thinking vs Answer Token Routing, T-10a/b Attention Architecture & Kernels, T-11 Quantization, T-12 CUDA Graphs, T-13 KV-Cache, T-14 NIXL, T-16 Activation Functions, T-18 Spectral-Guided PEFT Validation
 - Planned diffusion: D-1..D-6
 - Planned vision-language: VL-1..VL-8
