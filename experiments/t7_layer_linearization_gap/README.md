@@ -142,13 +142,13 @@ For stable propagation through 36 layers, we need most layers to be contractive.
 
 $$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \cos\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}, \quad \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
 
-If $C_g = 1$, the layer is globally linear (one $W$ suffices). If $C_g \to 0$, the Jacobians are input-dependent (only locally linear).
+A score of 1 means the layer is globally linear (one $W$ suffices); a score near 0 means the Jacobians are input-dependent (only locally linear).
 
 **Connection to linear replacement (Method 7).** The least-squares solution is a data-weighted average of per-point Jacobians:
 
 $$\mathbf{W} = \Big(\sum_k g(\mathbf{x}_k)\mathbf{x}_k^\top\Big)\Big(\sum_k \mathbf{x}_k \mathbf{x}_k^\top\Big)^{-1}$$
 
-If Jacobians are consistent ($C_g \to 1$), this average is close to any individual Jacobian and the replacement works well. If they vary ($C_g \ll 1$), the average washes out input-specific structure.
+If Jacobians are consistent (score near 1), this average is close to any individual Jacobian and the replacement works well. If they vary (score near 0), the average washes out input-specific structure.
 
 ## Methods
 
@@ -355,7 +355,9 @@ Left: residual R² across depth (raw vs normalized input). Right: scatter of R²
 
 ![Residual fitting analysis](results/residual_fitting_v2.png)
 
-All 36 layers tested with ridge regression, 80/20 train/test split. Three fitting approaches evaluated: residual ($g(\mathbf{x}) \approx W_r \mathbf{x}$), normalized residual ($g(\mathbf{x}) \approx W_n \cdot \text{RMSNorm}(\mathbf{x})$), and full-output ($\mathbf{x}_{\text{out}} \approx W \mathbf{x}$). Lambda selected by test-set MSE.
+All 36 layers tested with ridge regression, 80/20 train/test split. Three fitting approaches evaluated (lambda selected by test-set MSE):
+
+$$\text{Residual: } g(\mathbf{x}) \approx W_r \mathbf{x} \qquad \text{Normalized: } g(\mathbf{x}) \approx W_n \cdot \text{RMSNorm}(\mathbf{x}) \qquad \text{Full-output: } \mathbf{x}_{\text{out}} \approx W \mathbf{x}$$
 
 | Layer | KO Delta | Res R² | Res Recovery | Full Recovery | Norm Recovery |
 |-------|----------|--------|-------------|--------------|---------------|
