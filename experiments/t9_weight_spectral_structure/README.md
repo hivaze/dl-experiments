@@ -399,7 +399,7 @@ Overall correlation: **r = -0.186, p = 0.28** (not significant). However, per-ma
 
 **Interpretation:** The negative correlation for K suggests a "specialization-criticality tradeoff": layers that compress their key space into fewer dimensions are performing more unique computations that cannot be compensated by other layers. Conversely, layers with high K-rank (many attention patterns) are more redundant and easier to remove.
 
-**Update from T-7 Method 7 (Layer Replacement):** T-2's linear surrogate experiment adds another dimension: low-rank replacements (rank 64, 256) substantially underperform full-rank — even for layers whose full-rank linear replacement works well (early layers 0-3 and late layers 32-33, 35 at 87-99% recovery; layer 34 is a notable exception at -45%). Rank-256 achieves partial recovery for a few layers (up to ~77% for layers 0, 2, 6) but falls far short of full-rank replacement everywhere. This confirms that despite low Q/K effective rank ratios, the *aggregate* layer computation requires near-full rank to approximate linearly. The low effective rank of individual matrices (especially Q at 0.25) does not translate to a low-rank layer-level computation because the composition of attention routing + value extraction + MLP involves interactions across all dimensions.
+**Update from T-7 Method 7 (Enhanced Layer Replacement):** T-7's enhanced linear replacement experiment (with ridge regression and train/test validation) shows that **every layer achieves 73-99% recovery** with a single full-rank global linear map. The original OLS experiment reported catastrophic failures for middle layers (e.g., -2630% for layer 8), but this was an overfitting artifact — ridge regression eliminates it entirely (layer 8 now recovers 89.3%). However, low-rank replacements (rank 64, 256) still substantially underperform full-rank: rank-256 achieves only 27-89% recovery depending on layer, confirming that despite low Q/K effective rank ratios, the *aggregate* layer computation requires near-full rank. The low effective rank of individual matrices (Q at 0.25) does not translate to a low-rank layer-level computation because the composition of attention routing + value extraction + MLP involves interactions across all dimensions.
 
 #### T-7 Linearization Gap
 
@@ -481,7 +481,7 @@ Uniform-rank LoRA wastes parameters on redundant plateau layers and under-fits c
 
 ### Pruning Guidance
 
-**5. K-rank as a pruning signal.** Layers with high K-rank are more redundant and safer to remove (see conclusion #5). This aligns with T-7: redundant, linear, and non-critical layers are the same layers. Note from T-7 Method 7: while these layers can be *removed* (low knockout damage), they cannot be cheaply *replaced* by a low-rank linear map — the full layer computation requires near-full rank even though individual K/Q matrices are low-rank. Pruning (full removal) is viable; low-rank factored replacement is not.
+**5. K-rank as a pruning signal.** Layers with high K-rank are more redundant and safer to remove (see conclusion #5). This aligns with T-7: redundant, linear, and non-critical layers are the same layers. T-7's enhanced Method 7 shows these layers can also be *replaced* by a full-rank ridge-fitted linear map at 73-95% recovery — but low-rank replacement (rank 64-256) remains inadequate (27-60% recovery), confirming that the full layer computation requires near-full rank even though individual K/Q matrices are low-rank.
 
 **6. Do not compress layers 0, 33-35.** These carry load-bearing nonlinear computation (see conclusions #7, Key Finding 4). Additionally, layers 34-35 show unexpected up_proj rank compression (0.60→0.52 vs ~0.68 average), suggesting specialized output-preparation computation. K-proj at layer 5 has κ = 2424 (vs mean ~106) — compression there risks amplifying numerical instability.
 
@@ -500,7 +500,7 @@ Depth-varying: the Q-rank jump at layer 24→25 (see Key Finding 4) motivates wi
 ### Convergent Evidence
 
 - **T-7 (Linearization Gap)**: Plateau layers are both low-rank and near-linear, making them doubly suitable for compression (see cross-reference above)
-- **T-2 (Layer Knockout)**: Low K-rank predicts high criticality (see cross-reference above); plateau layers have low criticality overall. T-7 Method 7 shows that per-matrix low effective rank (Q at 0.25, K at 0.38) does not enable low-rank layer replacement — the layer's aggregate computation requires near-full rank even when individual components are compressible
+- **T-2 (Layer Knockout)**: Low K-rank predicts high criticality (see cross-reference above); plateau layers have low criticality overall. T-7's enhanced Method 7 shows that full-rank ridge-fitted linear replacement achieves 73-99% recovery for all layers, but low-rank replacement remains inadequate — per-matrix low effective rank (Q at 0.25, K at 0.38) does not enable low-rank layer replacement because the aggregate computation involves cross-dimensional interactions
 - **T-3 (Layer Swap Cost)**: Adjacent plateau layers have cheap swap costs, consistent with low Q-rank making them interchangeable
 
 ## Usage

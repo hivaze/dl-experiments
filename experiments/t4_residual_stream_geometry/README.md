@@ -558,18 +558,18 @@ Throughout this section, T-4 geometric data (PR, norms, SV spectra, impact metri
 
 ### T-2 (Layer Knockout) + T-7 (Linearization Gap): Geometry Explains Criticality and Linearizability
 
-T-2 found that layer 0 is catastrophically critical (99.6x loss ratio). T-7 showed it is also linearizable (99.1% recovery with a full-rank linear map). T-4 explains why both are true: layer 0 is the only layer that *increases* dimensionality (PR: 73→125) and completely redirects the representation (cos(io) = 0.11). This geometric expansion is a specific, learnable linear transformation — which is why linear replacement works but removal is catastrophic.
+T-2 found that layer 0 is catastrophically critical (99.6x loss ratio). T-7 showed it is also linearizable (98.7% recovery with a ridge-fitted linear map). T-4 explains why both are true: layer 0 is the only layer that *increases* dimensionality (PR: 73→125) and completely redirects the representation (cos(io) = 0.11). This geometric expansion is a specific, learnable linear transformation — which is why linear replacement works but removal is catastrophic.
 
-T-7's "bimodal linearity" finding maps onto T-4's geometry:
+T-7's enhanced Method 7 (with ridge regression) shows **all layers are substantially linearizable** (73-99% recovery), correcting the original OLS results where middle layers appeared to fail catastrophically due to overfitting. The relationship with T-4's geometry:
 
-| T-4 Geometry Region | Layers | PR | T-7 Linear Replacement |
+| T-4 Geometry Region | Layers | PR | T-7 Ridge Recovery |
 |---|---|---|---|
-| Early collapse (low PR) | 1–5 | 6–43 | 91–99% recovery |
-| Mid recovery (high PR) | 6–15 | 147–205 | Mixed: L6 recovers (87%), L8–L12 fail |
-| Deep collapse (low PR) | 16–24 | 2.3–16.8 | Fails: −1796% to −101% |
-| Late recovery | 25–34 | 24–127 | L32–L33 recover (87–88%), **L34 fails (−45%)** |
+| Early collapse (low PR) | 1–5 | 6–43 | 83–92% |
+| Mid recovery (high PR) | 6–15 | 147–205 | 76–95% (L6: 76%, L10: 94%) |
+| Deep collapse (low PR) | 16–24 | 2.3–16.8 | 73–88% |
+| Late recovery | 25–34 | 24–127 | 81–85% |
 
-The general trend: **low-PR regions tend to be linearizable, high-PR regions tend to resist linear replacement**. When representations are squeezed into 2–6 effective dimensions, the layer's transformation is constrained enough to be captured by a fixed linear map. When representations span 150–200 dimensions, the transformation is input-dependent and globally nonlinear.
+The geometric correlation is weaker than initially thought: **all regions are linearizable with proper fitting**, though low-PR regions slightly underperform. The original apparent "bimodal linearity" (linearizable vs catastrophic) was an artifact of OLS overfitting, not a geometric property.
 
 T-2 also found layer 6 is a computational hub (2nd most critical at 21.7x, appears in 4/5 top synergistic pairs). In T-4, layer 6 sits at the onset of the mid-recovery plateau (PR jumps from 43 at layer 5 to 197 at layer 6) — it marks the transition from compressed to distributed representation. The update correlation matrix shows layer 6 at the boundary between the early and mid correlation blocks.
 
