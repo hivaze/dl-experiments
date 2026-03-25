@@ -548,15 +548,19 @@ def compute_loss(model, tokenizer, calibration_data, device):
 
 
 def collect_layer_activations(model, tokenizer, layer_idx, calibration_data, device):
-    """Collect (input, output) activation pairs for a given layer."""
+    """Collect (input, output, normalized_input) activation pairs for a given layer."""
     inputs_list = []
     outputs_list = []
+    normed_list = []
+    layernorm = model.model.layers[layer_idx].input_layernorm
 
     def capture_hook(module, inp, out):
         h_in = inp[0].detach()
         h_out = out[0].detach() if isinstance(out, tuple) else out.detach()
+        h_normed = layernorm(h_in).detach()
         inputs_list.append(h_in.squeeze(0))
         outputs_list.append(h_out.squeeze(0))
+        normed_list.append(h_normed.squeeze(0))
 
     hook = model.model.layers[layer_idx].register_forward_hook(capture_hook)
     with torch.no_grad():
@@ -565,7 +569,8 @@ def collect_layer_activations(model, tokenizer, layer_idx, calibration_data, dev
             model(**tokens, use_cache=False)
     hook.remove()
 
-    return torch.cat(inputs_list, dim=0), torch.cat(outputs_list, dim=0)
+    return (torch.cat(inputs_list, dim=0), torch.cat(outputs_list, dim=0),
+            torch.cat(normed_list, dim=0))
 
 
 def split_train_test(inputs, outputs, train_frac=0.8, seed=42):
@@ -613,6 +618,29 @@ def evaluate_with_replacement(model, tokenizer, layer_idx, W, bias,
     def hook_fn(module, inp, out):
         h_in = inp[0]
         h_out = torch.einsum("ij,bsj->bsi", W, h_in)
+        if bias is not None:
+            h_out = h_out + bias
+        return (h_out,) + out[1:] if isinstance(out, tuple) else h_out
+
+    hook = model.model.layers[layer_idx].register_forward_hook(hook_fn)
+    loss = compute_loss(model, tokenizer, calibration_data, device)
+    hook.remove()
+    return loss
+
+
+def evaluate_with_norm_replacement(model, tokenizer, layer_idx, W_r, bias,
+                                    calibration_data, device):
+    """Replace a layer with: output = input + W_r @ RMSNorm(input) [+ bias].
+    Architecturally motivated: the actual layer applies RMSNorm before
+    attention and MLP, so fitting against normalized inputs removes the
+    scale-invariance nonlinearity from the regression problem."""
+    layernorm = model.model.layers[layer_idx].input_layernorm
+
+    def hook_fn(module, inp, out):
+        h_in = inp[0]
+        h_normed = layernorm(h_in)
+        h_correction = torch.einsum("ij,bsj->bsi", W_r, h_normed)
+        h_out = h_in + h_correction
         if bias is not None:
             h_out = h_out + bias
         return (h_out,) + out[1:] if isinstance(out, tuple) else h_out
@@ -678,13 +706,21 @@ def run_method7_v2(model, tokenizer, num_layers, calibration_data):
     for layer_idx in tqdm(range(num_layers), desc="Layer replacements"):
         t0 = time.time()
 
-        inputs, outputs = collect_layer_activations(
+        inputs, outputs, normed_inputs = collect_layer_activations(
             model, tokenizer, layer_idx, calibration_data, device)
         n_tokens = inputs.shape[0]
 
-        # Train/test split in float32
-        X_tr, Y_tr, X_te, Y_te = split_train_test(
-            inputs.float(), outputs.float(), TRAIN_FRACTION, SEED)
+        # Train/test split in float32 (same permutation for all three)
+        n = inputs.shape[0]
+        gen = torch.Generator(device='cpu').manual_seed(SEED)
+        perm = torch.randperm(n, generator=gen).to(inputs.device)
+        n_train = int(n * TRAIN_FRACTION)
+        X_tr = inputs[perm[:n_train]].float()
+        Y_tr = outputs[perm[:n_train]].float()
+        X_te = inputs[perm[n_train:]].float()
+        Y_te = outputs[perm[n_train:]].float()
+        Xn_tr = normed_inputs[perm[:n_train]].float()
+        Xn_te = normed_inputs[perm[n_train:]].float()
 
         # Compute residuals R = Y - X = g(x)
         R_tr = Y_tr - X_tr
@@ -761,6 +797,36 @@ def run_method7_v2(model, tokenizer, num_layers, calibration_data):
         del W_dev
 
         # ============================================================
+        # D. NORMALIZED RESIDUAL FITTING: R = g(x) ≈ W_n · RMSNorm(x)
+        # Architecturally motivated: the layer applies RMSNorm before
+        # attention and MLP, so fitting in normalized space removes the
+        # scale-invariance nonlinearity from the fitting problem.
+        # ============================================================
+        best_lam_n, best_mse_n = 0.0, float("inf")
+        for lam in RIDGE_LAMBDAS:
+            W_n = fit_ridge(Xn_tr, R_tr, lam)
+            mse = activation_mse(W_n, Xn_te, R_te)
+            if mse < best_mse_n:
+                best_lam_n, best_mse_n = lam, mse
+                W_n_best = W_n
+
+        norm_residual_r2 = compute_r2(W_n_best, Xn_te, R_te)
+
+        W_dev = W_n_best.to(torch.bfloat16).to(device)
+        norm_loss = evaluate_with_norm_replacement(
+            model, tokenizer, layer_idx, W_dev, None, calibration_data, device)
+        norm_delta = norm_loss - baseline_loss
+        norm_rec = (1.0 - norm_delta / knockout_delta) if knockout_delta > 0 else 0.0
+
+        replacements["norm_residual_ridge"] = {
+            "loss": norm_loss, "loss_delta": norm_delta,
+            "recovery_vs_knockout": norm_rec,
+            "residual_r2": norm_residual_r2,
+            "best_lambda": best_lam_n, "test_mse": best_mse_n,
+        }
+        del W_dev
+
+        # ============================================================
         # C. LOW-RANK RESIDUAL-PRESERVING FITS
         # ============================================================
         for rank in RANKS_TO_TEST:
@@ -791,13 +857,15 @@ def run_method7_v2(model, tokenizer, num_layers, calibration_data):
         elapsed = time.time() - t0
         rr = replacements["residual_ridge"]
         fr = replacements["full_output_ridge"]
+        nr = replacements["norm_residual_ridge"]
         print(f"  L{layer_idx:>2} ({elapsed:>4.1f}s) "
               f"KO={knockout_delta:+.3f} Id={identity_delta:+.3f}  "
               f"ResR²={rr['residual_r2']:>.3f} ResRec={rr['recovery_vs_knockout']:>6.1%}  "
-              f"FullRec={fr['recovery_vs_knockout']:>6.1%}")
+              f"FullRec={fr['recovery_vs_knockout']:>6.1%}  "
+              f"NormRec={nr['recovery_vs_knockout']:>6.1%}")
         sys.stdout.flush()
 
-        del inputs, outputs, X_tr, Y_tr, X_te, Y_te, R_tr, R_te
+        del inputs, outputs, normed_inputs, X_tr, Y_tr, X_te, Y_te, Xn_tr, Xn_te, R_tr, R_te
         torch.cuda.empty_cache()
 
     return results
@@ -1221,19 +1289,26 @@ def create_plots_v2(summary, num_layers, t2_criticality, consistency_results,
                     for l in m7_layers]
         res_rec = [rep[l]["replacements"]["residual_ridge"]["recovery_vs_knockout"] * 100
                    for l in m7_layers]
+        norm_r2 = [rep[l]["replacements"]["norm_residual_ridge"]["residual_r2"] for l in m7_layers]
+        norm_rec_vals = [rep[l]["replacements"]["norm_residual_ridge"]["recovery_vs_knockout"] * 100
+                         for l in m7_layers]
 
         ax = axes[0]
         ax.plot(m7_layers, res_r2, 'o-', markersize=4, color='#1976D2',
-                label='Residual R²')
+                label='Raw input R²')
+        ax.plot(m7_layers, norm_r2, 's-', markersize=4, color='#E91E63',
+                label='Norm input R²')
         ax.set_xlabel("Layer"); ax.set_ylabel("R²")
         ax.set_title("Residual R² — Fraction of g(x) Explained by Linear Fit")
-        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
 
         ax = axes[1]
         ax.scatter(res_r2, full_rec, c=m7_layers, cmap='viridis', s=50, zorder=3,
-                  label='Full-output recovery')
+                  label='Full-output (raw)')
         ax.scatter(res_r2, res_rec, c=m7_layers, cmap='viridis', s=50, zorder=3,
-                  marker='s', alpha=0.5, label='Residual recovery')
+                  marker='s', alpha=0.5, label='Residual (raw)')
+        ax.scatter(norm_r2, norm_rec_vals, c=m7_layers, cmap='viridis', s=50, zorder=3,
+                  marker='^', alpha=0.5, label='Residual (norm)')
         for l in m7_layers:
             if l in [0, 6, 16, 35]:
                 ax.annotate(f"L{l}", (rep[l]["replacements"]["residual_ridge"]["residual_r2"],
@@ -1261,6 +1336,7 @@ def create_plots_v2(summary, num_layers, t2_criticality, consistency_results,
         ax = axes[0]
         methods_plot = [
             ("residual_ridge", "Residual Ridge", "#7B1FA2"),
+            ("norm_residual_ridge", "Norm Residual", "#E91E63"),
             ("full_output_ridge", "Full-Output Ridge", "#1976D2"),
             ("rank_512", "R-512", "#00897B"),
             ("rank_256", "R-256", "#FFA726"),
@@ -1279,7 +1355,7 @@ def create_plots_v2(summary, num_layers, t2_criticality, consistency_results,
         ax.set_title("Recovery Comparison — All Methods")
         ax.axhline(y=100, color="black", linestyle="--", alpha=0.3)
         ax.axhline(y=0, color="black", linewidth=0.8)
-        ax.legend(fontsize=7, ncol=5, loc="lower left")
+        ax.legend(fontsize=7, ncol=6, loc="lower left")
         ax.set_ylim(bottom=-210)
 
         # Bottom: loss deltas including identity baseline
@@ -1287,13 +1363,15 @@ def create_plots_v2(summary, num_layers, t2_criticality, consistency_results,
         ko_deltas = [rep[l]["knockout_delta"] for l in m7_layers]
         id_deltas = [rep[l]["identity_delta"] for l in m7_layers]
         res_deltas = [rep[l]["replacements"]["residual_ridge"]["loss_delta"] for l in m7_layers]
+        norm_deltas = [rep[l]["replacements"]["norm_residual_ridge"]["loss_delta"] for l in m7_layers]
         full_deltas = [rep[l]["replacements"]["full_output_ridge"]["loss_delta"] for l in m7_layers]
 
-        w2 = 0.2
-        ax.bar(x - 1.5*w2, ko_deltas, w2, label="Knockout", color="#E53935", alpha=0.85)
-        ax.bar(x - 0.5*w2, id_deltas, w2, label="Identity (skip only)", color="#9E9E9E", alpha=0.85)
-        ax.bar(x + 0.5*w2, res_deltas, w2, label="Residual Ridge", color="#7B1FA2", alpha=0.85)
-        ax.bar(x + 1.5*w2, full_deltas, w2, label="Full Ridge", color="#1976D2", alpha=0.85)
+        w2 = 0.16
+        ax.bar(x - 2*w2, ko_deltas, w2, label="Knockout", color="#E53935", alpha=0.85)
+        ax.bar(x - 1*w2, id_deltas, w2, label="Identity (skip only)", color="#9E9E9E", alpha=0.85)
+        ax.bar(x + 0*w2, res_deltas, w2, label="Residual Ridge", color="#7B1FA2", alpha=0.85)
+        ax.bar(x + 1*w2, norm_deltas, w2, label="Norm Residual", color="#E91E63", alpha=0.85)
+        ax.bar(x + 2*w2, full_deltas, w2, label="Full Ridge", color="#1976D2", alpha=0.85)
 
         ax.set_xticks(x)
         ax.set_xticklabels([str(l) for l in m7_layers], fontsize=7)
