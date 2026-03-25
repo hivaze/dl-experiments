@@ -232,7 +232,7 @@ The input layernorm has extremely high weight variance (std=1.33), meaning some 
 
 ## Conclusions & Key Findings
 
-1. **RMSNorm to LayerNorm is a viable zero-shot swap** (1.40x loss ratio). This is the *only* replacement that preserves model quality. The residual stream |mean|/std ratio of ~1.3% explains why: mean centering corrects a non-zero but small bias.
+1. **RMSNorm to LayerNorm is a viable zero-shot swap** (1.40x loss ratio). This is the *only* replacement that preserves model quality. The residual stream abs(mean)/std ratio of ~1.3% explains why: mean centering corrects a non-zero but small bias.
 
 2. **Compiled RMSNorm is genuinely faster than fused LayerNorm** (16% at hidden=2560, 67% at hidden=4096). The previous version's contrary finding was an artifact of comparing unfused Python against a fused CUDA kernel.
 
@@ -245,6 +245,38 @@ The input layernorm has extremely high weight variance (std=1.33), meaning some 
 6. **Norm scale parameters are heavily learned** — only 7.5% of pre-attention scales remain near initialization, suggesting the model uses normalization as a learned feature gating mechanism.
 
 7. **Residual stream kurtosis reaches 170,000** (vs 3.0 for Gaussian), confirming extreme outlier structure in deep transformer activations. This explains why normalization is structurally essential at inference time, not just a training aid.
+
+## Practical Implications
+
+### Inference Optimization
+
+**1. Always use `torch.compile` for RMSNorm.** The unfused Python implementation is 2.5x slower than compiled. If your serving stack uses HuggingFace transformers without compilation, you are leaving 16-67% of normalization latency on the table (depending on hidden size). This is a free speedup with zero quality impact.
+
+**2. Do not switch to LayerNorm for speed.** Despite `nn.LayerNorm` having a fused CUDA kernel, compiled RMSNorm is still faster. The mean computation in LayerNorm is not free, and the fused kernel advantage disappears once RMSNorm is also compiled. At large hidden sizes (4096+), the gap widens to 67%.
+
+### Model Surgery & Transfer
+
+**3. RMSNorm-to-LayerNorm swap is safe for quick experiments.** If you need to run a RMSNorm model through a framework that only supports LayerNorm (or vice versa), the zero-shot swap costs only 1.40x loss ratio (PPL 1.09 to 1.13). Transfer the learned $\gamma$ weights directly; set $\beta = 0$. For production use, a brief fine-tuning pass would likely close this gap entirely.
+
+**4. Never replace normalization with cross-sequence variants.** This is a hard architectural constraint. Any normalization that mixes statistics across the sequence dimension (GroupNorm, BatchNorm, InstanceNorm) is fundamentally incompatible with transformer per-token processing. This rules out applying vision-model normalization tricks (e.g., GroupNorm from Stable Diffusion) to LLM layers.
+
+### Quantization & Compression
+
+**5. QK-norm must be preserved in quantized models.** Removing or degrading QK-norm causes 136x loss increase — comparable to removing all normalization entirely. Quantization schemes that fuse or approximate QK-norm (e.g., folding it into Q/K projection weights) must ensure the normalized magnitudes remain calibrated, especially the early-layer K amplification (1.0 to 314.0 at layer 0) and late-layer Q suppression (65.5 to 17.6 at layer 32).
+
+**6. Norm scale parameters carry critical information.** With 92.5% of pre-attention $\gamma$ weights having drifted far from initialization, these parameters cannot be reset, pruned, or shared across layers. Any compression technique (LoRA, distillation, pruning) must preserve per-layer norm weights faithfully.
+
+### Architecture Design
+
+**7. Norm sensitivity identifies fragile layers.** Layers 7, 22, 24, 25, and 29 are 3-15x more sensitive to normalization removal than layer 4. These layers require the most careful handling during any architectural modification (layer pruning, reordering, or replacement). The layer-6 residual stream explosion (std jumps 29x) makes layer 7 the single most fragile point for normalization — any intervention near this boundary should be validated carefully.
+
+**8. The 1.3% mean-to-std ratio is a design signal.** The remarkably constant abs(mean)/std ratio across all 36 layers suggests the model has learned to keep the mean small relative to variance. This validates the RMSNorm design choice for new architectures: mean centering adds computational cost for a correction that trained models already minimize. However, the ratio is non-zero, meaning a small quality delta will always exist — whether this matters depends on the application's tolerance.
+
+### Cross-Experiment Connections
+
+- **T-7 (Linearization Gap)**: T-7 found that RMSNorm is the primary source of scale-invariance (homogeneity gap ~1.0 for all layers). T-15 confirms this from the normalization side: the 5-84x compression ratio means RMSNorm projects all inputs onto a manifold of similar scale before attention and MLP see them, explaining why the Jacobian is approximately scale-invariant.
+- **T-4 (Residual Stream Geometry)**: T-4 found effective dimensionality collapses in deep layers (PR drops to 2-6). T-15's kurtosis finding (170,000) provides the complementary view: the residual stream concentrates into a few extreme dimensions, which normalization must tame before each sublayer.
+- **T-2 (Layer Knockout)**: T-2 found layer 6 is the 2nd most critical layer. T-15 explains a contributing factor: layer 6 causes a 29x std explosion in the residual stream, making it a structural inflection point where the model's activation regime fundamentally changes.
 
 ## Usage
 
