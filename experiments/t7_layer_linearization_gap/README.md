@@ -44,7 +44,7 @@ $$g(\mathbf{x}) = f_{\text{attn}}(\mathbf{x}) + f_{\text{mlp}}\big(\mathbf{x} + 
 
 The attention sublayer:
 
-$$f_{\text{attn}}(\mathbf{x}) = W_o \cdot \text{Attn}\big(W_q \cdot \text{RMSNorm}(\mathbf{x}),\, W_k \cdot \text{RMSNorm}(\mathbf{x}),\, W_v \cdot \text{RMSNorm}(\mathbf{x})\big)$$
+$$f_{\text{attn}}(\mathbf{x}) = W_o \cdot \text{Attn}\big(W_q \cdot \text{RMSNorm}(\mathbf{x}), W_k \cdot \text{RMSNorm}(\mathbf{x}), W_v \cdot \text{RMSNorm}(\mathbf{x})\big)$$
 
 The MLP sublayer (SwiGLU):
 
@@ -76,7 +76,7 @@ This says: "the change in output equals the Jacobian times the change in input."
 
 **Taylor expansion.** To understand the error, we expand $g$ to second order. Perturb the input by $\varepsilon \mathbf{d}$, where $\mathbf{d}$ is a unit direction and $\varepsilon$ controls the perturbation size:
 
-$$g(\mathbf{x} + \varepsilon \mathbf{d}) = \underbrace{g(\mathbf{x})}_{\text{value at base point}} + \underbrace{\varepsilon \, \mathbf{J} \mathbf{d}}_{\text{1st order (linear)}} + \underbrace{\frac{\varepsilon^2}{2} \, \mathbf{H}[\mathbf{d}, \mathbf{d}]}_{\text{2nd order (quadratic)}} + \underbrace{\mathcal{O}(\varepsilon^3)}_{\text{higher order}}$$
+$$g(\mathbf{x} + \varepsilon \mathbf{d}) = \underbrace{g(\mathbf{x})}_{\text{value at base point}} + \underbrace{\varepsilon \mathbf{J} \mathbf{d}}_{\text{1st order (linear)}} + \underbrace{\frac{\varepsilon^2}{2} \mathbf{H}[\mathbf{d}, \mathbf{d}]}_{\text{2nd order (quadratic)}} + \underbrace{\mathcal{O}(\varepsilon^3)}_{\text{higher order}}$$
 
 Here $\mathbf{H}$ is the Hessian tensor (second derivatives of $g$), and $\mathbf{H}[\mathbf{d}, \mathbf{d}]$ is the second-order correction in direction $\mathbf{d}$. We write $\mathbf{J}$ as shorthand for $\mathbf{J}_g(\mathbf{x})$.
 
@@ -84,15 +84,15 @@ Now define three quantities:
 
 **Actual displacement** — what really happens when we perturb the input:
 
-$$\Delta = g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x}) = \varepsilon \, \mathbf{J} \mathbf{d} + \frac{\varepsilon^2}{2} \, \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3)$$
+$$\Delta = g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x}) = \varepsilon \mathbf{J} \mathbf{d} + \frac{\varepsilon^2}{2} \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3)$$
 
 **Linear prediction** — what the Jacobian predicts should happen:
 
-$$\hat{\Delta} = \varepsilon \, \mathbf{J} \mathbf{d}$$
+$$\hat{\Delta} = \varepsilon \mathbf{J} \mathbf{d}$$
 
 **Residual** — the part the linear approximation misses:
 
-$$\mathbf{r} = \Delta - \hat{\Delta} = \frac{\varepsilon^2}{2} \, \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3)$$
+$$\mathbf{r} = \Delta - \hat{\Delta} = \frac{\varepsilon^2}{2} \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3)$$
 
 The **perturbation gap** is the relative size of this residual:
 
@@ -152,7 +152,7 @@ This keeps $\mathbf{x} + \boldsymbol{\delta}$ representable in bf16 without losi
 
 ### Homogeneity Gap: Does Scaling the Input Scale the Output?
 
-**What it tests.** A truly linear function satisfies $g(\alpha \mathbf{x}) = \alpha \, g(\mathbf{x})$ for any scalar $\alpha$. Equivalently, $g(\mathbf{x}) = \mathbf{J} \mathbf{x}$ (the Jacobian applied to the input itself). The homogeneity gap measures how badly this fails:
+**What it tests.** A truly linear function satisfies $g(\alpha \mathbf{x}) = \alpha g(\mathbf{x})$ for any scalar $\alpha$. Equivalently, $g(\mathbf{x}) = \mathbf{J} \mathbf{x}$ (the Jacobian applied to the input itself). The homogeneity gap measures how badly this fails:
 
 $$\text{homogeneity gap} = \frac{\|g(\mathbf{x}) - \mathbf{J} \mathbf{x}\|}{\|g(\mathbf{x})\|}$$
 
@@ -243,7 +243,7 @@ A layer can be locally linear but globally nonlinear. Think of a function like $
 
 **Measuring consistency.** Pick a random direction $\hat{\mathbf{d}}$, and compute $\mathbf{J}(\mathbf{x}_i) \hat{\mathbf{d}}$ at multiple data points $\mathbf{x}_1, \ldots, \mathbf{x}_K$. If the Jacobian is the same everywhere, all these vectors should point in the same direction. We measure this via pairwise cosine similarity:
 
-$$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \, \cos\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}},\, \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
+$$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \cos\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}, \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
 
 - $C_g = 1$: the Jacobian maps every direction identically at all inputs — the layer is globally linear
 - $C_g \to 0$: the Jacobian rotates outputs inconsistently across inputs — only locally linear

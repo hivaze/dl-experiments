@@ -81,9 +81,9 @@ We use shorthand throughout: $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ are the hid
 
 **Formula.**
 
-$$\text{cos}(\ell) = \frac{\mathbf{a}_\ell \cdot \mathbf{b}_\ell}{\lVert \mathbf{a}_\ell \rVert \, \lVert \mathbf{b}_\ell \rVert}$$
+$$\text{cos}(\ell) = \frac{\mathbf{a}_\ell \cdot \mathbf{b}_\ell}{\lVert \mathbf{a}_\ell \rVert \lVert \mathbf{b}_\ell \rVert}$$
 
-where $\mathbf{a}_\ell \cdot \mathbf{b}_\ell = \sum_{i=1}^{d} a_{\ell,i} \, b_{\ell,i}$ is the dot product and $\lVert \mathbf{a}_\ell \rVert = \sqrt{\sum_i a_{\ell,i}^2}$ is the Euclidean norm.
+where $\mathbf{a}_\ell \cdot \mathbf{b}_\ell = \sum_{i=1}^{d} a_{\ell,i} b_{\ell,i}$ is the dot product and $\lVert \mathbf{a}_\ell \rVert = \sqrt{\sum_i a_{\ell,i}^2}$ is the Euclidean norm.
 
 - $\text{cos}(\ell) = 1$: identical directions (representations encode the same information, up to scale)
 - $\text{cos}(\ell) = 0$: orthogonal (completely unrelated)
@@ -129,7 +129,7 @@ RMSNorm normalizes by the root-mean-square of the vector's components: $\hat{a}_
 
 **Step 2.** Multiply by the unembedding matrix $W_U \in \mathbb{R}^{V \times d}$ (where $V$ is the vocabulary size) to get logits — one score per vocabulary token:
 
-$$\mathbf{z}_\ell^A = W_U \, \hat{\mathbf{a}}_\ell \in \mathbb{R}^{V}$$
+$$\mathbf{z}_\ell^A = W_U \hat{\mathbf{a}}_\ell \in \mathbb{R}^{V}$$
 
 **Step 3.** Apply softmax to convert logits into a probability distribution over the vocabulary:
 
@@ -139,7 +139,7 @@ Do the same for completion B to get $p_B^{(\ell)}$.
 
 **Step 4.** Compute KL divergence — how many extra bits of information you need if you use distribution A to encode samples from distribution B:
 
-$$D_{\text{KL}}\bigl(p_B^{(\ell)} \,\|\, p_A^{(\ell)}\bigr) = \sum_{i=1}^{V} p_B^{(\ell)}(i) \, \log \frac{p_B^{(\ell)}(i)}{p_A^{(\ell)}(i)}$$
+$$D_{\text{KL}}\bigl(p_B^{(\ell)} \| p_A^{(\ell)}\bigr) = \sum_{i=1}^{V} p_B^{(\ell)}(i) \log \frac{p_B^{(\ell)}(i)}{p_A^{(\ell)}(i)}$$
 
 - $D_{\text{KL}} = 0$: both completions produce identical next-token distributions at this layer (functionally indistinguishable)
 - $D_{\text{KL}} \gg 0$: the distributions are very different (the model would predict very different tokens)
@@ -164,7 +164,7 @@ Let $X, Y \in \mathbb{R}^{n \times d}$ be the hidden-state matrices for completi
 
 **Step 1. Center the matrices** (subtract the mean token representation):
 
-$$\overline{X} = X - \frac{1}{n}\mathbf{1}\,\mathbf{1}^T X, \qquad \overline{Y} = Y - \frac{1}{n}\mathbf{1}\,\mathbf{1}^T Y$$
+$$\overline{X} = X - \frac{1}{n}\mathbf{1}\mathbf{1}^T X, \qquad \overline{Y} = Y - \frac{1}{n}\mathbf{1}\mathbf{1}^T Y$$
 
 Centering removes the "average position" so we only compare *relative* structure (how tokens differ from each other), not absolute position in the space.
 
@@ -176,7 +176,7 @@ $K_{ij}$ tells you how similar token $i$ and token $j$ are within completion A. 
 
 **Step 3. Compare the Gram matrices** using the Hilbert-Schmidt Independence Criterion (HSIC):
 
-$$\text{HSIC}(K, L) = \sum_{i,j} K_{ij} \, L_{ij}$$
+$$\text{HSIC}(K, L) = \sum_{i,j} K_{ij} L_{ij}$$
 
 This is just the element-wise dot product of the two Gram matrices. If token pairs that are similar in A are also similar in B, this sum is large. This can also be written as $\lVert \overline{Y}^T \overline{X} \rVert_F^2$ (squared Frobenius norm of the cross-covariance matrix).
 

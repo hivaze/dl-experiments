@@ -71,6 +71,35 @@ The README is the authoritative document for the experiment — anyone reading i
 - **Chat templates**: Always use `tokenizer.apply_chat_template()` for instruct/thinking models, never raw `tokenizer()`. For Qwen3 thinking models the template adds `<think>` tags.
 - When shuffling layers, `layer_idx` in attention modules becomes stale - must use `use_cache=False`
 
+## LaTeX in READMEs (GitHub Rendering)
+
+GitHub renders `$$...$$` (display) and `$...$` (inline) math via KaTeX, but many standard LaTeX commands silently break — they render as literal characters instead of spacing/symbols. Follow these rules strictly:
+
+### Forbidden Commands (render as literal characters on GitHub)
+| Command | Renders as | Fix |
+|---------|-----------|-----|
+| `\,` | literal `,` | Remove entirely, or use `\quad`/`\qquad` for large gaps |
+| `\;` | literal `;` | Remove entirely |
+| `\!` | literal `!` | Remove entirely |
+| `\:` | literal `:` | Remove entirely |
+| `\{` `\}` | may break | Use `\lbrace` `\rbrace` |
+| `\bar{X}` | tiny overbar | Use `\overline{X}` |
+| `\substack` | not supported | Rewrite formula without it |
+
+### Safe Spacing Commands
+- `\quad`, `\qquad` — work reliably for explicit spacing
+- `\cdot`, `\times` — multiplication symbols (work fine)
+- Regular spaces in math — usually sufficient; KaTeX auto-spaces around operators
+
+### Adjacent Bold Symbols
+`\mathbf{1}\mathbf{1}^T` renders as "**11**^T" which looks like the number eleven. Preferred fix: add context in surrounding text (e.g., "where **1** is the all-ones vector"). Do NOT use `\,` to separate — it renders as a comma between them.
+
+### Inline Math with Underscores
+Inline `$...$` with 2+ underscores (e.g., `$a_1 + b_2$`) can break in some renderers (VS Code preview) because `_` gets interpreted as markdown italic. This works on GitHub but fails elsewhere. When possible, move complex subscripted expressions to display math `$$...$$`.
+
+### Verification
+Run `python3 /tmp/check_latex.py` (or recreate it) to scan all READMEs for forbidden commands. The checker should report **0 errors** before committing.
+
 ## Experiment Tracking
 - Research agenda in `TODO.md` — T-1..T-17, D-1..D-6, VL-1..VL-8
 - Completed text experiments: T-1 Logit Lens, T-2 Layer Knockout, T-3 Layer Swap Cost, T-4 Residual Stream Geometry, T-7 Layer Linearization Gap, T-9 Weight Spectral Structure, T-17 Contrastive Completion Trajectories

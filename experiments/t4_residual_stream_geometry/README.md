@@ -117,7 +117,7 @@ Now expand the inner product between any two vectors:
 
 $$\langle \mathbf{h}_i, \mathbf{h}_j \rangle = \langle \overline{\mathbf{h}} + \tilde{\mathbf{h}}_i,\ \overline{\mathbf{h}} + \tilde{\mathbf{h}}_j \rangle$$
 
-$$= \underbrace{\lVert \overline{\mathbf{h}} \rVert^2}_{\text{(A) shared component}} + \underbrace{\langle \overline{\mathbf{h}},\, \tilde{\mathbf{h}}_i \rangle + \langle \overline{\mathbf{h}},\, \tilde{\mathbf{h}}_j \rangle}_{\text{(B) cross terms}} + \underbrace{\langle \tilde{\mathbf{h}}_i,\, \tilde{\mathbf{h}}_j \rangle}_{\text{(C) intrinsic similarity}}$$
+$$= \underbrace{\lVert \overline{\mathbf{h}} \rVert^2}_{\text{(A) shared component}} + \underbrace{\langle \overline{\mathbf{h}}, \tilde{\mathbf{h}}_i \rangle + \langle \overline{\mathbf{h}}, \tilde{\mathbf{h}}_j \rangle}_{\text{(B) cross terms}} + \underbrace{\langle \tilde{\mathbf{h}}_i, \tilde{\mathbf{h}}_j \rangle}_{\text{(C) intrinsic similarity}}$$
 
 **When the mean dominates** ($\lVert \overline{\mathbf{h}} \rVert \gg \lVert \tilde{\mathbf{h}}_i \rVert$ for typical $i$): Term (A) dominates. The norms are $\lVert \mathbf{h}_i \rVert \approx \lVert \overline{\mathbf{h}} \rVert$. So:
 
@@ -216,7 +216,7 @@ A single number (like $\lVert \boldsymbol{\delta}_\ell \rVert$) can't capture th
 
 The absolute size of the layer's contribution. Answers: "how much does this layer change the residual stream in raw terms?"
 
-**Metric 2 — Directional preservation:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(\ell-1)})$
+**Metric 2 — Directional preservation:** $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(\ell-1)})$
 
 The cosine between the layer's output and input. Answers: "does the representation still point in roughly the same direction after this layer?" Values near 1 mean a small angular perturbation (the update is a minor correction). Values near 0 mean a major redirect.
 
@@ -229,7 +229,7 @@ The update magnitude normalized by the output magnitude. Answers: "does the resi
 - Ratio $< 1$: the accumulated residual is larger than this layer's single contribution (typical — most layers add incrementally)
 - Ratio $> 1$: this layer's update is *larger* than the result, which is possible only if the update partially cancels the residual (output = residual + update, and if update opposes residual, the output can be smaller than the update)
 
-**Metric 4 — Update-residual alignment:** $\cos(\boldsymbol{\delta}_\ell,\, \mathbf{h}^{(\ell-1)})$
+**Metric 4 — Update-residual alignment:** $\cos(\boldsymbol{\delta}_\ell, \mathbf{h}^{(\ell-1)})$
 
 The cosine between the update and the *existing* residual (before the update is added). This is the most revealing metric — it tells us the *geometric role* of the update:
 
@@ -247,19 +247,19 @@ The residual stream is a running sum. By the last layer, the representation $\ma
 
 #### Persistence metrics
 
-**Embedding persistence:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(\text{emb})})$
+**Embedding persistence:** $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(\text{emb})})$
 
 How much of the original embedding direction survives at layer $\ell$. If this drops to zero quickly, the embedding's directional content is erased — later layers build entirely new directions.
 
-**Final alignment:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(L)})$
+**Final alignment:** $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(L)})$
 
 How aligned each intermediate layer's output is with the final representation. A monotonic increase means the network gradually converges toward its output direction. A sudden jump would mean one layer is responsible for most of the final direction.
 
-**Update survival:** $\cos(\boldsymbol{\delta}_\ell,\, \mathbf{h}^{(L)})$
+**Update survival:** $\cos(\boldsymbol{\delta}_\ell, \mathbf{h}^{(L)})$
 
 Does layer $\ell$'s update point *toward* the eventual output? If $\cos \approx 0$, that layer's update is orthogonal to the final direction — it built intermediate structure that doesn't directly appear in the output. If $\cos > 0$, the update contributed constructively to the final direction.
 
-**Cumulative drift:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(\ell-k)})$ for gap sizes $k \in \lbrace 1, 2, 4, 8, 16 \rbrace$
+**Cumulative drift:** $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(\ell-k)})$ for gap sizes $k \in \lbrace 1, 2, 4, 8, 16 \rbrace$
 
 How rapidly the representation rotates over spans of $k$ layers. Drift over 1 layer is captured by directional preservation; drift over 16 layers reveals whether the network slowly drifts or makes abrupt turns.
 
@@ -271,15 +271,15 @@ $$\mathbf{h}^{(L)} = \mathbf{h}^{(\text{emb})} + \boldsymbol{\delta}_0 + \boldsy
 
 we can ask: **how much of the final representation's magnitude comes from each term?** Project each update onto the final direction $\hat{\mathbf{h}}^{(L)} = \mathbf{h}^{(L)} / \lVert \mathbf{h}^{(L)} \rVert$:
 
-$$\text{signed projection of layer } \ell = \langle \boldsymbol{\delta}_\ell,\, \hat{\mathbf{h}}^{(L)} \rangle$$
+$$\text{signed projection of layer } \ell = \langle \boldsymbol{\delta}_\ell, \hat{\mathbf{h}}^{(L)} \rangle$$
 
 This is the scalar length of $\boldsymbol{\delta}_\ell$ projected onto the final direction. Positive means the update contributes constructively; negative means it opposes. By the linearity of inner products, these projections sum to the total:
 
-$$\lVert \mathbf{h}^{(L)} \rVert = \langle \mathbf{h}^{(L)},\, \hat{\mathbf{h}}^{(L)} \rangle = \langle \mathbf{h}^{(\text{emb})},\, \hat{\mathbf{h}}^{(L)} \rangle + \sum_{\ell=0}^{L-1} \langle \boldsymbol{\delta}_\ell,\, \hat{\mathbf{h}}^{(L)} \rangle$$
+$$\lVert \mathbf{h}^{(L)} \rVert = \langle \mathbf{h}^{(L)}, \hat{\mathbf{h}}^{(L)} \rangle = \langle \mathbf{h}^{(\text{emb})}, \hat{\mathbf{h}}^{(L)} \rangle + \sum_{\ell=0}^{L-1} \langle \boldsymbol{\delta}_\ell, \hat{\mathbf{h}}^{(L)} \rangle$$
 
 So the projections form a complete **decomposition of the final norm into per-layer contributions**. Each layer's percentage is:
 
-$$\text{contribution of layer } \ell = \frac{\langle \boldsymbol{\delta}_\ell,\, \hat{\mathbf{h}}^{(L)} \rangle}{\lVert \mathbf{h}^{(L)} \rVert} \times 100\%$$
+$$\text{contribution of layer } \ell = \frac{\langle \boldsymbol{\delta}_\ell, \hat{\mathbf{h}}^{(L)} \rangle}{\lVert \mathbf{h}^{(L)} \rVert} \times 100\%$$
 
 This tells us, for example, that layers 30–35 contribute ~80% of the final norm while layers 0–15 contribute less than 5% — meaning early layers build structure orthogonal to the final output direction
 
