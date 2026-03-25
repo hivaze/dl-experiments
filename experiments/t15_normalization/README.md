@@ -211,8 +211,8 @@ Layer 7 stands out: it's the first layer *after* the layer-6 residual stream exp
 
 ### Residual Stream Mean Analysis
 
-| Layer Range | Avg |Mean| | Avg Std | |Mean|/Std Ratio |
-|------------|------------|---------|----------------|
+| Layer Range | Avg abs(Mean) | Avg Std | abs(Mean)/Std Ratio |
+|------------|---------------|---------|---------------------|
 | 0 (embed) | 0.0002 | 0.019 | 0.0127 |
 | 1-6 (early) | 0.002 - 0.014 | 0.17 - 0.62 | 0.013 - 0.022 |
 | 7-35 (deep) | 0.046 - 0.165 | 3.3 - 12.6 | 0.012 - 0.015 |
