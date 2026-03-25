@@ -18,7 +18,7 @@ from pathlib import Path
 from vllm import LLM, SamplingParams
 
 DATA_DIR = Path(__file__).parent
-PROMPTS_PATH = DATA_DIR / "prompts.json"
+DEFAULT_PROMPTS = "prompts.json"
 DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
 DEFAULT_MAX_TOKENS = 2048
 DEFAULT_GPU_MEM = 0.5
@@ -30,10 +30,11 @@ def model_slug(model_name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]", "-", name).lower()
 
 
-def load_prompts():
-    with open(PROMPTS_PATH) as f:
+def load_prompts(prompts_file: str = DEFAULT_PROMPTS):
+    prompts_path = DATA_DIR / prompts_file
+    with open(prompts_path) as f:
         data = json.load(f)
-    return data.get("system_message"), data["prompts"]
+    return data.get("system_message"), data["prompts"], prompts_path
 
 
 def main():
@@ -42,17 +43,19 @@ def main():
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, help="Max new tokens per prompt")
     parser.add_argument("--gpu-memory", type=float, default=DEFAULT_GPU_MEM, help="vLLM GPU memory utilization")
     parser.add_argument("--device", default="cuda:0", help="GPU device (only affects vLLM tensor placement)")
+    parser.add_argument("--prompts", default=DEFAULT_PROMPTS, help="Prompts JSON filename (relative to data/text_completions/)")
+    parser.add_argument("--output-name", default="completions.json", help="Output JSON filename")
     args = parser.parse_args()
 
     slug = model_slug(args.model)
     output_dir = DATA_DIR / slug
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "completions.json"
+    output_path = output_dir / args.output_name
 
-    system_message, prompts = load_prompts()
+    system_message, prompts, prompts_path = load_prompts(args.prompts)
     print(f"Model: {args.model}")
     print(f"Slug: {slug}")
-    print(f"Prompts: {len(prompts)} (from {PROMPTS_PATH})")
+    print(f"Prompts: {len(prompts)} (from {prompts_path})")
     print(f"System message: {system_message}")
     print(f"Max new tokens: {args.max_tokens}")
     print(f"Output: {output_path}")
@@ -133,7 +136,7 @@ def main():
                 "num_prompts": len(prompts),
                 "total_prompt_tokens": total_prompt_tokens,
                 "total_completion_tokens": total_completion_tokens,
-                "prompts_source": str(PROMPTS_PATH),
+                "prompts_source": str(prompts_path),
             },
             "completions": results,
         }, f, indent=2)

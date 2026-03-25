@@ -558,27 +558,27 @@ Throughout this section, T-4 geometric data (PR, norms, SV spectra, impact metri
 
 ### T-2 (Layer Knockout) + T-7 (Linearization Gap): Geometry Explains Criticality and Linearizability
 
-T-2 found that layer 0 is catastrophically critical (99.6x loss ratio). T-7 showed it is also linearizable (98.7% recovery with a ridge-fitted linear map). T-4 explains why both are true: layer 0 is the only layer that *increases* dimensionality (PR: 73→125) and completely redirects the representation (cos(io) = 0.11). This geometric expansion is a specific, learnable linear transformation — which is why linear replacement works but removal is catastrophic.
+T-2 found that layer 0 is catastrophically critical (99.6x loss ratio). T-7 v2 showed it is also linearizable (98.4% recovery with a ridge-fitted linear map). T-4 explains why both are true: layer 0 is the only layer that *increases* dimensionality (PR: 73→125) and completely redirects the representation (cos(io) = 0.11). This geometric expansion is a specific, learnable linear transformation — which is why linear replacement works but removal is catastrophic.
 
-T-7's enhanced Method 7 (with ridge regression) shows **all layers are substantially linearizable** (73-99% recovery), correcting the original OLS results where middle layers appeared to fail catastrophically due to overfitting. The relationship with T-4's geometry:
+T-7 v2 (with ridge regression and proper train/test split) shows that **only 14 of 36 layers achieve $\geq$ 73% CE recovery** (range: 37–98.4%), correcting both the original OLS results (catastrophic failures from overfitting) and the v1 ridge results (inflated recovery from lacking train/test validation). The relationship with T-4's geometry:
 
-| T-4 Geometry Region | Layers | PR | T-7 Ridge Recovery |
+| T-4 Geometry Region | Layers | PR | T-7 v2 Ridge Recovery |
 |---|---|---|---|
-| Early collapse (low PR) | 1–5 | 6–43 | 83–92% |
-| Mid recovery (high PR) | 6–15 | 147–205 | 76–95% (L6: 76%, L10: 94%) |
-| Deep collapse (low PR) | 16–24 | 2.3–16.8 | 73–88% |
-| Late recovery | 25–34 | 24–127 | 81–85% |
+| Early collapse (low PR) | 1–5 | 6–43 | 72–85% |
+| Mid recovery (high PR) | 6–15 | 147–205 | 54–83% (L6: 54%, L10: 83%) |
+| Deep collapse (low PR) | 16–24 | 2.3–16.8 | 37–70% (worst region) |
+| Late recovery | 25–34 | 24–127 | 52–65% |
 
-The geometric correlation is weaker than initially thought: **all regions are linearizable with proper fitting**, though low-PR regions slightly underperform. The original apparent "bimodal linearity" (linearizable vs catastrophic) was an artifact of OLS overfitting, not a geometric property.
+The geometric correlation is stronger than the v1 ridge numbers suggested: **low-PR regions (deep collapse, layers 16–24) substantially resist linearization** (37–70% recovery), while high-PR regions are moderately linearizable. L6 is a notable exception — high PR (197) but only 54% recovery, because its nonlinear residual carries critical downstream information (T-2's 2nd most critical layer).
 
 T-2 also found layer 6 is a computational hub (2nd most critical at 21.7x, appears in 4/5 top synergistic pairs). In T-4, layer 6 sits at the onset of the mid-recovery plateau (PR jumps from 43 at layer 5 to 197 at layer 6) — it marks the transition from compressed to distributed representation. The update correlation matrix shows layer 6 at the boundary between the early and mid correlation blocks.
 
 ### T-7 (Linearization Gap): Local Smoothness vs Global Geometry
 
-T-7 found a U-shaped nonlinearity profile with middle layers (6–18) being most locally linear (gap ~0.13–0.15) but globally nonlinear (catastrophic replacement failure). T-7's Jacobian consistency data resolves this paradox when combined with T-4's geometry:
+T-7 found a U-shaped nonlinearity profile with middle layers (6–18) being most locally linear (gap ~0.13–0.15) but poorly linearizable globally (37–83% CE recovery). T-7 v2's Jacobian consistency data and PCA-aligned gap (Method 8) explain this when combined with T-4's geometry:
 
-- **Layers 6–8**: Low Jacobian consistency (0.55–0.66) despite low linearization gap. The Jacobian is smooth at each operating point but *varies strongly across inputs*. These layers have high PR (197–205) — the many active dimensions create room for input-dependent behavior.
-- **Layers 29–35**: High consistency (0.76–0.88), meaning the Jacobian is nearly the same regardless of input. Norms are largest here (236–571), and the late-layer norm growth dominates over input-dependent variation. The update-residual alignment is strongly positive (cos = 0.29–0.44), confirming these layers perform a consistent, reinforcing transformation.
+- **Layers 6–8**: Moderate Jacobian consistency (0.73–0.82) despite low linearization gap. The Jacobian is smooth at each operating point but varies across inputs. These layers have high PR (197–205) — the many active dimensions create room for input-dependent behavior. Method 8 shows layers 11–18 have gap ratio $\geq$ 1.0 (nonlinearity aligned with data-relevant directions), explaining why locally linear layers resist global linearization.
+- **Layers 29–35**: High consistency (0.84–0.90), meaning the Jacobian is nearly the same regardless of input. Norms are largest here (236–571), and the late-layer norm growth dominates over input-dependent variation. The update-residual alignment is strongly positive (cos = 0.29–0.44), confirming these layers perform a consistent, reinforcing transformation.
 
 T-7 also found that MLP nonlinearity drives the late-layer spike (MLP gap 0.24 at layer 35). The final-layer dispersal requires nonlinear transformation that SwiGLU provides — the strongly negative update-residual alignment (cos = −0.73) shows this is an active reversal, not just noise.
 
@@ -618,10 +618,10 @@ Combining T-4 with other experiments reveals a coherent six-phase pipeline:
 
 | Phase | Layers | PR | Key Geometry | Impact Signature | Cross-Experiment Role |
 |---|---|---|---|---|---|
-| **Geometric expansion** | 0 | 73→125 | Norm 1→7.7 | cos(io)=0.11, ratio=1.0 | Critical (99.6x, T-2), linearizable (99.1%, T-7) |
-| **First compression** | 1–5 | 6–43 | Top-1 SV 14–40% | Reinforcing (cos(d,h)=+0.37) | Linearizable (91–99%, T-7) |
-| **Distributed processing** | 6–15 | 147–205 | Top-1 SV 3–4% | Weakly opposing (cos(d,h)=−0.10) | Hub at L6 (21.7x, T-2), low Jacobian consistency |
-| **Second compression** | 16–24 | 2.3–16.8 | Top-1 SV 36–79% | Transitioning to reinforcing | Prediction accuracy begins climb (T-1) |
+| **Geometric expansion** | 0 | 73→125 | Norm 1→7.7 | cos(io)=0.11, ratio=1.0 | Critical (99.6x, T-2), linearizable (98.4%, T-7) |
+| **First compression** | 1–5 | 6–43 | Top-1 SV 14–40% | Reinforcing (cos(d,h)=+0.37) | Linearizable (72–85%, T-7) |
+| **Distributed processing** | 6–15 | 147–205 | Top-1 SV 3–4% | Weakly opposing (cos(d,h)=−0.10) | Hub at L6 (21.7x, T-2), variable recovery (54–83%, T-7) |
+| **Second compression** | 16–24 | 2.3–16.8 | Top-1 SV 36–79% | Transitioning to reinforcing | Prediction accuracy begins climb (T-1), worst linearizability (37–70%, T-7) |
 | **Output preparation** | 25–34 | 24–127 | Norm 139→571 | Strongly reinforcing (cos(d,h)=+0.35) | Cheapest swap region (T-3), ~50% of final norm |
 | **Dispersal** | 35 | 160 | Cosine 0.63→0.09 | Opposing (cos(d,h)=−0.73), ratio=1.38 | Universal discriminator (T-17), 99.5% accuracy (T-1) |
 
@@ -634,7 +634,7 @@ The following implications are **hypotheses grounded in T-4 observations and cro
 The two compression bottlenecks pass information through as few as 2–3 effective dimensions, making intermediate layers within each bottleneck candidates for pruning or merging:
 
 - **Layers 17–23**: PR stays below 10, top-1 SV explains 36–79% of variance, and their updates are highly correlated (update correlation >0.5). *Hypothesis*: these 7 layers could be replaced with 2–3 layers or a single linear projection capturing the dominant singular direction.
-- **Layers 1–4**: Similarly low-dimensional (PR 6–20) and confirmed linearizable by T-7 (91–99% recovery). *Hypothesis*: these could be collapsed into a single learned linear map.
+- **Layers 1–4**: Similarly low-dimensional (PR 6–20) and moderately linearizable by T-7 v2 (72–85% recovery). *Hypothesis*: these could be collapsed into a single learned linear map, though 15–28% of their nonlinear contribution would be lost.
 - **Do not prune layer 0, layer 6, or layer 35.** T-2 knockout ratios (99.6x, 21.7x) and T-4's unique geometric signatures at these layers indicate they perform irreplaceable transformations.
 
 ### 2. Quantization Strategy by Geometric Phase
