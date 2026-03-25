@@ -53,7 +53,9 @@ $$\mathbf{H} \in \mathbb{R}^{N \times d}, \quad \text{row } i = \mathbf{h}_i - \
 
 $$\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$$
 
-with $r = \min(N, d)$. Each singular value tells us how much variance the data has along the corresponding direction $\mathbf{v}_i$ (column of $\mathbf{V}$). Specifically, $\sigma_i^2$ is proportional to the variance explained by direction $i$.
+with $r = \min(N, d)$.
+Each singular value tells us how much variance the data has along the corresponding direction $\mathbf{v}_i$ (column of $\mathbf{V}$).
+Specifically, $\sigma_i^2$ is proportional to the variance explained by direction $i$.
 
 **Step 3: Normalize to a probability distribution.** The total variance is the sum of all squared singular values. Define the fraction of variance in each direction:
 
@@ -83,7 +85,9 @@ $$\text{concentration} = \sum_i p_i^2$$
 
 Consider two extremes:
 
-**All variance in one direction:** $p_1 = 1$, all others zero. Then $\sum p_i^2 = 1$, so $\text{PR} = 1/1 = 1$. The representations are effectively one-dimensional.
+**All variance in one direction:** $p_1 = 1$, all others zero.
+Then $\sum p_i^2 = 1$, so $\text{PR} = 1/1 = 1$.
+The representations are effectively one-dimensional.
 
 **Variance spread equally across $k$ directions:**
 
@@ -91,7 +95,9 @@ $$p_1 = \cdots = p_k = 1/k$$
 
 with the rest zero. Then $\sum p_i^2 = k \cdot (1/k)^2 = 1/k$, so $\text{PR} = k$. This directly counts the number of active dimensions.
 
-**Smoothly decaying spectrum:** If $p_i$ decays gradually (say, exponentially), PR gives a number between 1 and $r$ that reflects the "effective" number of directions — directions with tiny $p_i$ contribute $p_i^2 \approx 0$ and don't inflate the count.
+**Smoothly decaying spectrum:** If $p_i$ decays gradually (say, exponentially), PR gives a number between 1 and $r$ that reflects the "effective" number of directions.
+Directions with tiny $p_i$ contribute negligibly
+($p_i^2 \approx 0$) and don't inflate the count.
 
 This is exactly the **inverse Simpson index** from ecology (where it counts effective species). In information theory, it equals $\exp(H_2)$ where the Rényi entropy of order 2 is:
 
@@ -147,7 +153,8 @@ $$\langle \mathbf{h}_i, \mathbf{h}_j \rangle = \langle \overline{\mathbf{h}} + \
 
 $$= \underbrace{\lVert \overline{\mathbf{h}} \rVert^2}_{\text{(A) shared component}} + \underbrace{\langle \overline{\mathbf{h}}, \tilde{\mathbf{h}}_i \rangle + \langle \overline{\mathbf{h}}, \tilde{\mathbf{h}}_j \rangle}_{\text{(B) cross terms}} + \underbrace{\langle \tilde{\mathbf{h}}_i, \tilde{\mathbf{h}}_j \rangle}_{\text{(C) intrinsic similarity}}$$
 
-**When the mean dominates** ($\lVert \overline{\mathbf{h}} \rVert \gg \lVert \tilde{\mathbf{h}}_i \rVert$ for typical $i$): Term (A) dominates. The norms are $\lVert \mathbf{h}_i \rVert \approx \lVert \overline{\mathbf{h}} \rVert$. So:
+**When the mean dominates** ($\lVert \overline{\mathbf{h}} \rVert \gg \lVert \tilde{\mathbf{h}}_i \rVert$ for typical $i$):
+Term (A) dominates. The norms satisfy $\lVert \mathbf{h}_i \rVert \approx \lVert \overline{\mathbf{h}} \rVert$. So:
 
 $$\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \lVert \mathbf{h}_j \rVert} \approx \frac{\lVert \overline{\mathbf{h}} \rVert^2}{\lVert \overline{\mathbf{h}} \rVert^2} = 1$$
 

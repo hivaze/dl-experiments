@@ -68,7 +68,9 @@ $$\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n \ge 0$$
 2. Each coordinate $i$ is scaled by $\sigma_i$
 3. $U$ rotates the result into the output space
 
-So $\sigma_i$ measures the gain along the $i$-th independent channel. A large $\sigma_1$ with small $\sigma_n$ means the matrix strongly prefers certain input directions over others.
+So $\sigma_i$ measures the gain along the $i$-th independent channel.
+A large $\sigma_1$ paired with
+a small $\sigma_n$ means the matrix strongly prefers certain input directions over others.
 
 **Why this matters for compression.** The best rank-$r$ approximation to $W$ (Eckart-Young-Mirsky theorem) is obtained by keeping only the top $r$ singular values and zeroing the rest:
 
@@ -88,13 +90,17 @@ If singular values decay fast, a small $r$ captures most of the matrix's action 
 
 $$p_i = \frac{\sigma_i^2}{\sum_{j=1}^n \sigma_j^2}$$
 
-Here $\sigma_i^2$ is the energy (variance) carried by the $i$-th channel, so $p_i$ is the fraction of total energy in channel $i$. Since all $p_i \ge 0$ and
+Here $\sigma_i^2$ is the energy (variance) carried by the $i$-th channel.
+So $p_i$ is the fraction of total energy in channel $i$.
+Since all $p_i \ge 0$ and
 
 $$\sum_i p_i = 1$$
 
 this is a valid probability distribution — it describes how energy is distributed across singular value modes.
 
-**Step 2: Measure concentration.** If energy is spread uniformly, all $p_i = 1/n$ and the distribution is "flat." If energy is concentrated in a few modes, a few $p_i$ are large and the rest are near zero. The **sum of squared probabilities**
+**Step 2: Measure concentration.** If energy is spread uniformly, all $p_i = 1/n$ and the distribution is "flat."
+If energy is concentrated in a few modes, a few $p_i$ are large and the rest are near zero.
+The **sum of squared probabilities**
 
 $$\sum_i p_i^2$$
 
@@ -134,7 +140,9 @@ Renyi-2 entropy weights the dominant modes more heavily than Shannon entropy, ma
 
 ### Stable Rank
 
-**Why another rank measure?** Participation ratio treats all singular values via the energy distribution $p_i$. But sometimes we want to know specifically: how dominant is the single largest singular value? If $\sigma_1$ is huge and everything else is small, that's a qualitatively different situation from energy being spread across many modes.
+**Why another rank measure?** Participation ratio treats all singular values via the energy distribution $p_i$.
+But sometimes we want to know specifically: how dominant is the single largest singular value?
+If $\sigma_1$ is huge and everything else is small, that's a qualitatively different situation from energy being spread across many modes.
 
 **Definition.** The stable rank compares total energy to the energy of the top mode:
 
@@ -234,7 +242,9 @@ These numbers directly translate to parameter budgets: a rank-$r$ factorization 
 
 ### Condition Number
 
-**Why condition number?** Even if a matrix has high effective rank (many active modes), it can be numerically fragile if the ratio between the largest and smallest singular values is extreme. A tiny perturbation to the input along the $\sigma_n$ direction gets amplified differently than one along the $\sigma_1$ direction.
+**Why condition number?** Even if a matrix has high effective rank (many active modes), it can be numerically fragile if the ratio between the largest and smallest singular values is extreme.
+A tiny perturbation to the input along the $\sigma_n$ direction
+gets amplified differently than one along the $\sigma_1$ direction.
 
 **Definition:**
 
@@ -245,7 +255,9 @@ $$\kappa(W) = \frac{\sigma_1}{\sigma_n}$$
 - $\kappa \gg 1$: Ill-conditioned — the matrix nearly annihilates some input directions while strongly amplifying others
 - $\kappa = \infty$: Singular matrix (rank-deficient)
 
-High condition numbers cause numerical instability: small floating-point errors along the $\sigma_n$ direction get amplified by $\kappa$ relative to the $\sigma_1$ direction. For bf16 inference with ~3 digits of precision, $\kappa > 1000$ means some directions are essentially lost to rounding noise.
+High condition numbers cause numerical instability: small floating-point errors along the $\sigma_n$ direction
+get amplified by $\kappa$ relative to the $\sigma_1$ direction.
+For bf16 inference with ~3 digits of precision, $\kappa > 1000$ means some directions are essentially lost to rounding noise.
 
 ## Methods
 
@@ -265,7 +277,9 @@ Based on the layer shuffle experiment, layers 0-16 form a "plateau" with similar
 
 $$t = \frac{\overline{x}_P - \overline{x}_L}{\sqrt{s_P^2 / n_P + s_L^2 / n_L}}$$
 
-where subscripts $P$ = plateau, $L$ = late, $n_P = 17$ (plateau layers), $n_L = 19$ (late layers), and the degrees of freedom are computed via the Welch-Satterthwaite equation.
+where subscripts $P$ = plateau and $L$ = late.
+Here $n_P = 17$ (plateau layers)
+and $n_L = 19$ (late layers), and the degrees of freedom are computed via the Welch-Satterthwaite equation.
 
 ## Results
 
@@ -442,7 +456,10 @@ Weight spectral structure does not significantly predict representation geometry
 6. **down_proj (0.64)** — MLP down-projection high-rank
 7. **up_proj (0.68)** — Least compressible, needs most capacity
 
-**Quantitative LoRA rank guidance:** The rank needed for 90% energy capture varies by matrix type. For q_proj: $r_{90} \sim 1240$ (out of max rank 2560). For up_proj: $r_{90} \sim 1810$. Standard LoRA uses ranks 4-64, which is far below even q_proj's $r_{90}$ — this works because LoRA only needs to capture the *task-specific delta*, not the full pre-trained weight.
+**Quantitative LoRA rank guidance:** The rank needed for 90% energy capture varies by matrix type.
+For q_proj: $r_{90} \sim 1240$ (out of max rank 2560).
+For up_proj: $r_{90} \sim 1810$.
+Standard LoRA uses ranks 4-64, which is far below even q_proj's $r_{90}$ — this works because LoRA only needs to capture the *task-specific delta*, not the full pre-trained weight.
 
 **Stable rank provides a more conservative bound:** Stable rank ratios are dramatically lower than effective rank ratios (7-36% of effective rank), with gate_proj most extreme (stable rank only 7.5% of effective rank, i.e., ~0.038 ratio vs 0.50 effective rank ratio). This means energy is heavily concentrated in the top singular value. For rank selection based on actual energy distribution rather than participation ratio, stable rank suggests much smaller ranks may suffice: gate_proj stable rank ≈ 97 (vs effective rank 1276).
 

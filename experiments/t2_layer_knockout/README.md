@@ -33,7 +33,8 @@ where $f_\ell$ is the combined attention + MLP transformation of layer $\ell$. E
 
 $$\mathbf{h}^{(L)} = \mathbf{h}^{(0)} + \sum_{\ell=1}^{L} f_\ell\bigl(\mathbf{h}^{(\ell-1)}\bigr)$$
 
-The final representation is the embedding plus the *sum of all layer updates*. This additive structure is why knockout works as an ablation method: removing layer $k$ means its update $f_k(\cdot)$ is never applied, so the residual stream passes through unchanged — equivalent to replacing $f_k$ with the identity:
+The final representation is the embedding plus the *sum of all layer updates*. This additive structure is why knockout works as an ablation method: removing layer $k$ means its update $f_k(\cdot)$ is never applied, so the residual stream passes through unchanged.
+This is equivalent to replacing $f_k$ with the identity:
 
 $$\mathbf{h}^{(k)}_{\text{knockout}} = \mathbf{h}^{(k-1)} \qquad \text{(skip layer } k\text{)}$$
 
@@ -99,7 +100,8 @@ $$S(i,j) = \Delta L_{i,j}^{\text{observed}} - \bigl(\Delta L_i + \Delta L_j\bigr
 
 **Why this definition?** Consider what the three cases mean in terms of the residual stream:
 
-- **$S > 0$ (super-additive)**: Removing both layers is *worse* than the sum of removing each alone. This means layer $i$'s update $f_i$ and layer $j$'s update $f_j$ form a **circuit** — they are functionally coupled. When only one is removed, the other can partially compensate or at least operates on somewhat-normal inputs. When both are removed, neither can compensate, and the combined damage exceeds the sum. Example: if layer 5 produces an intermediate representation that layer 6 specifically consumes, removing layer 5 alone damages layer 6's input but layer 6 still runs; removing both eliminates the entire computation.
+- **$S > 0$ (super-additive)**: Removing both layers is *worse* than the sum of removing each alone. This means layer $i$'s update $f_i$ and layer $j$'s update
+$f_j$ form a **circuit** — they are functionally coupled. When only one is removed, the other can partially compensate or at least operates on somewhat-normal inputs. When both are removed, neither can compensate, and the combined damage exceeds the sum. Example: if layer 5 produces an intermediate representation that layer 6 specifically consumes, removing layer 5 alone damages layer 6's input but layer 6 still runs; removing both eliminates the entire computation.
 
 - **$S < 0$ (sub-additive)**: Removing both is *less* damaging than expected. The layers are **redundant with each other** — they perform overlapping functions, so the second removal doesn't add as much damage as it would alone. Example: if layers 30 and 31 both refine output token probabilities in similar ways, losing one is bad but losing both isn't twice as bad.
 
@@ -136,7 +138,8 @@ This is $O(L^2)$ forward passes in the worst case (36 layers × 36 steps) but yi
 
 ### Part 1: Single Layer Knockout
 
-For each of the 36 layers $i$, we physically remove it from the model's `ModuleList` and run inference on all 50 calibration prompts. The loss ratio $R_i$ and absolute delta $\Delta L_i$ quantify how critical layer $i$ is. The model's `ModuleList` is restored after each knockout, ensuring each measurement is independent.
+For each of the 36 layers $i$, we physically remove it from the model's `ModuleList` and run inference on all 50 calibration prompts. The loss ratio $R_i$ and absolute delta
+$\Delta L_i$ quantify how critical layer $i$ is. The model's `ModuleList` is restored after each knockout, ensuring each measurement is independent.
 
 ### Part 2: Pair Layer Knockout
 
@@ -152,7 +155,7 @@ Iteratively remove the least-critical remaining layer, recomputing criticality a
 
 ![Single layer knockout criticality profile](results/single_knockout_overview.png)
 
-| Layer | Loss | Ratio $R_i$ | $\Delta L_i$ | Role |
+| Layer | Loss | Ratio (R per layer) | Delta L (loss change) | Role |
 |-------|------|-------------|---------------|------|
 | 0 | 8.905 | **99.6×** | +8.816 | Catastrophically critical |
 | 6 | 1.940 | **21.7×** | +1.851 | Computational hub |

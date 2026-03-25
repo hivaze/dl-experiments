@@ -35,7 +35,8 @@ where:
 
 $$\Delta_i = f_i(h_t^{(i-1)})$$
 
-This is the "correction" that layer $i$ writes after reading the current state $h_t^{(i-1)}$. Each $f_i$ consists of self-attention followed by a SwiGLU MLP.
+This is the "correction" that layer $i$ writes after reading the current state $h_t^{(i-1)}$.
+Each $f_i$ consists of self-attention followed by a SwiGLU MLP.
 - The sum is cumulative: layer $\ell$'s output is the embedding plus all corrections from layers $1$ through $\ell$
 
 **Why this matters.** Because updates are additive, the hidden state at each layer is a point in the same $d$-dimensional space. As we go deeper (increasing $\ell$), the hidden state traces out a *path* (trajectory) through this space — starting at the embedding, accumulating corrections, and ending at the representation that gets decoded into a token prediction. This is what we compare between two completions.
@@ -58,7 +59,9 @@ Both trajectories
 
 $$\mathbf{a}_0, \mathbf{a}_1, \ldots, \mathbf{a}_L \quad \text{and} \quad \mathbf{b}_0, \mathbf{b}_1, \ldots, \mathbf{b}_L$$
 
-live in $\mathbb{R}^{2560}$ and are shaped by the same context (identical prefix) but seeded with different tokens at the pivot. Our question becomes: **how does the distance between $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ evolve as $\ell$ goes from 0 to 35?**
+live in $\mathbb{R}^{2560}$ and are shaped by the same context (identical prefix) but seeded with different tokens at the pivot. Our question becomes: **how does the distance between
+$\mathbf{a}_\ell$ and
+$\mathbf{b}_\ell$ evolve as $\ell$ goes from 0 to 35?**
 
 ### Step 3: Why One Metric Isn't Enough
 
@@ -81,7 +84,9 @@ This is why we use **four complementary metrics**, each capturing a different as
 
 ### Step 4: The Four Metrics in Detail
 
-We use shorthand throughout: $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ are the hidden states at the pivot for completions A and B after layer $\ell$, as defined in Step 2.
+We use shorthand throughout:
+$\mathbf{a}_\ell$ and
+$\mathbf{b}_\ell$ are the hidden states at the pivot for completions A and B after layer $\ell$, as defined in Step 2.
 
 #### 4a. Cosine Similarity — Are the Two Representations Pointing the Same Way?
 
@@ -190,7 +195,8 @@ Centering removes the "average position" so we only compare *relative* structure
 
 $$K = \overline{X}\overline{X}^T \in \mathbb{R}^{n \times n}, \qquad L = \overline{Y}\overline{Y}^T \in \mathbb{R}^{n \times n}$$
 
-$K_{ij}$ tells you how similar token $i$ and token $j$ are within completion A. $L_{ij}$ does the same for completion B. These Gram matrices encode the *internal similarity structure* of each completion.
+$K_{ij}$ tells you how similar token $i$ and token $j$ are within completion A.
+$L_{ij}$ does the same for completion B. These Gram matrices encode the *internal similarity structure* of each completion.
 
 **Step 3. Compare the Gram matrices** using the Hilbert-Schmidt Independence Criterion (HSIC):
 
@@ -253,7 +259,9 @@ This creates a balanced 2×2 design (relationship × prefix structure) enabling 
 
 ### Method 1: Contrastive Logit Lens
 
-Extension of T-1. For each completion in a group, run the full prompt + completion through the model with teacher forcing. At each layer $\ell$, project the residual stream at the pivot position through the final LM head (RMSNorm + unembedding) to get logit distributions $p_A^{(\ell)}$ and $p_B^{(\ell)}$.
+Extension of T-1. For each completion in a group, run the full prompt + completion through the model with teacher forcing. At each layer $\ell$, project the residual stream at the pivot position through the final LM head (RMSNorm + unembedding) to get logit distributions
+$p_A^{(\ell)}$ and
+$p_B^{(\ell)}$.
 
 **Primary metric** — how distinguishable are the two completions' logit distributions at each layer?
 
