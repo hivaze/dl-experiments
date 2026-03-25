@@ -81,7 +81,7 @@ We use shorthand throughout: $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ are the hid
 
 **Formula.**
 
-$$\text{cos}(\ell) = \frac{\mathbf{a}_\ell \cdot \mathbf{b}_\ell}{\lVert \mathbf{a}_\ell \rVert \; \lVert \mathbf{b}_\ell \rVert}$$
+$$\text{cos}(\ell) = \frac{\mathbf{a}_\ell \cdot \mathbf{b}_\ell}{\lVert \mathbf{a}_\ell \rVert \, \lVert \mathbf{b}_\ell \rVert}$$
 
 where $\mathbf{a}_\ell \cdot \mathbf{b}_\ell = \sum_{i=1}^{d} a_{\ell,i} \, b_{\ell,i}$ is the dot product and $\lVert \mathbf{a}_\ell \rVert = \sqrt{\sum_i a_{\ell,i}^2}$ is the Euclidean norm.
 
@@ -139,7 +139,7 @@ Do the same for completion B to get $p_B^{(\ell)}$.
 
 **Step 4.** Compute KL divergence — how many extra bits of information you need if you use distribution A to encode samples from distribution B:
 
-$$D_{\text{KL}}\!\bigl(p_B^{(\ell)} \,\|\, p_A^{(\ell)}\bigr) = \sum_{i=1}^{V} p_B^{(\ell)}(i) \;\log \frac{p_B^{(\ell)}(i)}{p_A^{(\ell)}(i)}$$
+$$D_{\text{KL}}\bigl(p_B^{(\ell)} \,\|\, p_A^{(\ell)}\bigr) = \sum_{i=1}^{V} p_B^{(\ell)}(i) \, \log \frac{p_B^{(\ell)}(i)}{p_A^{(\ell)}(i)}$$
 
 - $D_{\text{KL}} = 0$: both completions produce identical next-token distributions at this layer (functionally indistinguishable)
 - $D_{\text{KL}} \gg 0$: the distributions are very different (the model would predict very different tokens)
@@ -164,13 +164,13 @@ Let $X, Y \in \mathbb{R}^{n \times d}$ be the hidden-state matrices for completi
 
 **Step 1. Center the matrices** (subtract the mean token representation):
 
-$$\bar{X} = X - \frac{1}{n}\mathbf{1}\mathbf{1}^T X, \qquad \bar{Y} = Y - \frac{1}{n}\mathbf{1}\mathbf{1}^T Y$$
+$$\overline{X} = X - \frac{1}{n}\mathbf{1}\,\mathbf{1}^T X, \qquad \overline{Y} = Y - \frac{1}{n}\mathbf{1}\,\mathbf{1}^T Y$$
 
 Centering removes the "average position" so we only compare *relative* structure (how tokens differ from each other), not absolute position in the space.
 
 **Step 2. Compute the Gram matrices** (token-by-token similarity within each completion):
 
-$$K = \bar{X}\bar{X}^T \in \mathbb{R}^{n \times n}, \qquad L = \bar{Y}\bar{Y}^T \in \mathbb{R}^{n \times n}$$
+$$K = \overline{X}\overline{X}^T \in \mathbb{R}^{n \times n}, \qquad L = \overline{Y}\overline{Y}^T \in \mathbb{R}^{n \times n}$$
 
 $K_{ij}$ tells you how similar token $i$ and token $j$ are within completion A. $L_{ij}$ does the same for completion B. These Gram matrices encode the *internal similarity structure* of each completion.
 
@@ -178,11 +178,11 @@ $K_{ij}$ tells you how similar token $i$ and token $j$ are within completion A. 
 
 $$\text{HSIC}(K, L) = \sum_{i,j} K_{ij} \, L_{ij}$$
 
-This is just the element-wise dot product of the two Gram matrices. If token pairs that are similar in A are also similar in B, this sum is large. This can also be written as $\lVert \bar{Y}^T \bar{X} \rVert_F^2$ (squared Frobenius norm of the cross-covariance matrix).
+This is just the element-wise dot product of the two Gram matrices. If token pairs that are similar in A are also similar in B, this sum is large. This can also be written as $\lVert \overline{Y}^T \overline{X} \rVert_F^2$ (squared Frobenius norm of the cross-covariance matrix).
 
 **Step 4. Normalize** to get a value in $[0, 1]$:
 
-$$\text{CKA}(\bar{X}, \bar{Y}) = \frac{\text{HSIC}(K, L)}{\sqrt{\text{HSIC}(K, K) \cdot \text{HSIC}(L, L)}} = \frac{\lVert \bar{Y}^T \bar{X} \rVert_F^2}{\lVert \bar{X}^T \bar{X} \rVert_F \cdot \lVert \bar{Y}^T \bar{Y} \rVert_F}$$
+$$\text{CKA}(\overline{X}, \overline{Y}) = \frac{\text{HSIC}(K, L)}{\sqrt{\text{HSIC}(K, K) \cdot \text{HSIC}(L, L)}} = \frac{\lVert \overline{Y}^T \overline{X} \rVert_F^2}{\lVert \overline{X}^T \overline{X} \rVert_F \cdot \lVert \overline{Y}^T \overline{Y} \rVert_F}$$
 
 - CKA = 1: the two completions induce identical similarity structure across token positions (same "representational geometry")
 - CKA = 0: the similarity patterns are completely unrelated

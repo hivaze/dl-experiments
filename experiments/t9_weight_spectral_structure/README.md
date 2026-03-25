@@ -237,7 +237,7 @@ For each of the 7 weight matrices at each of the 36 layers, we compute the full 
 
 Based on the layer shuffle experiment, layers 0-16 form a "plateau" with similar weight norms, while layers 17-35 diverge. We test whether spectral structure also differs between these groups using Welch's t-test (unequal variance, two-sample t-test):
 
-$$t = \frac{\bar{x}_P - \bar{x}_L}{\sqrt{s_P^2 / n_P + s_L^2 / n_L}}$$
+$$t = \frac{\overline{x}_P - \overline{x}_L}{\sqrt{s_P^2 / n_P + s_L^2 / n_L}}$$
 
 where subscripts $P$ = plateau, $L$ = late, $n_P = 17$ (plateau layers), $n_L = 19$ (late layers), and the degrees of freedom are computed via the Welch-Satterthwaite equation.
 

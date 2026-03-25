@@ -44,7 +44,7 @@ $$g(\mathbf{x}) = f_{\text{attn}}(\mathbf{x}) + f_{\text{mlp}}\big(\mathbf{x} + 
 
 The attention sublayer:
 
-$$f_{\text{attn}}(\mathbf{x}) = W_o \cdot \text{Attn}\big(W_q \cdot \text{RMSNorm}(\mathbf{x}),\; W_k \cdot \text{RMSNorm}(\mathbf{x}),\; W_v \cdot \text{RMSNorm}(\mathbf{x})\big)$$
+$$f_{\text{attn}}(\mathbf{x}) = W_o \cdot \text{Attn}\big(W_q \cdot \text{RMSNorm}(\mathbf{x}),\, W_k \cdot \text{RMSNorm}(\mathbf{x}),\, W_v \cdot \text{RMSNorm}(\mathbf{x})\big)$$
 
 The MLP sublayer (SwiGLU):
 
@@ -243,7 +243,7 @@ A layer can be locally linear but globally nonlinear. Think of a function like $
 
 **Measuring consistency.** Pick a random direction $\hat{\mathbf{d}}$, and compute $\mathbf{J}(\mathbf{x}_i) \hat{\mathbf{d}}$ at multiple data points $\mathbf{x}_1, \ldots, \mathbf{x}_K$. If the Jacobian is the same everywhere, all these vectors should point in the same direction. We measure this via pairwise cosine similarity:
 
-$$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \; \underset{i \neq j}{\text{mean}} \; \cos\!\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}, \;\; \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
+$$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \, \cos\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}},\, \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
 
 - $C_g = 1$: the Jacobian maps every direction identically at all inputs — the layer is globally linear
 - $C_g \to 0$: the Jacobian rotates outputs inconsistently across inputs — only locally linear

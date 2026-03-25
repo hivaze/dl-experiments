@@ -37,9 +37,9 @@ A naive answer is "count the nonzero singular values" (i.e., the matrix rank). B
 
 Start with $N$ token representations $\lbrace \mathbf{h}_1, \ldots, \mathbf{h}_N \rbrace \subset \mathbb{R}^d$. In our experiment, $N = 4{,}094$ (completion tokens) and $d = 2{,}560$ (hidden dimension).
 
-**Step 1: Mean-center.** Compute the centroid $\bar{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$ and subtract it. This removes the shared offset so we measure the *spread* of representations, not their location. Form the centered data matrix:
+**Step 1: Mean-center.** Compute the centroid $\overline{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$ and subtract it. This removes the shared offset so we measure the *spread* of representations, not their location. Form the centered data matrix:
 
-$$\mathbf{H} \in \mathbb{R}^{N \times d}, \quad \text{row } i = \mathbf{h}_i - \bar{\mathbf{h}}$$
+$$\mathbf{H} \in \mathbb{R}^{N \times d}, \quad \text{row } i = \mathbf{h}_i - \overline{\mathbf{h}}$$
 
 **Step 2: Compute SVD.** The SVD factorizes $\mathbf{H} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^\top$, where $\boldsymbol{\Sigma}$ contains singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$ with $r = \min(N, d)$. Each singular value tells us how much variance the data has along the corresponding direction $\mathbf{v}_i$ (column of $\mathbf{V}$). Specifically, $\sigma_i^2$ is proportional to the variance explained by direction $i$.
 
@@ -94,38 +94,38 @@ The simplest test: pick two random representations and measure the angle between
 
 For a set of vectors $\lbrace \mathbf{h}_i \rbrace$, the **mean pairwise cosine similarity** is:
 
-$$\bar{c} = \frac{1}{|\mathcal{P}|} \sum_{(i,j) \in \mathcal{P}} \frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \cdot \lVert \mathbf{h}_j \rVert}$$
+$$\overline{c} = \frac{1}{|\mathcal{P}|} \sum_{(i,j) \in \mathcal{P}} \frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \cdot \lVert \mathbf{h}_j \rVert}$$
 
 where $\mathcal{P}$ is the set of sampled distinct pairs (we sample 5,000 pairs rather than computing all $\binom{N}{2}$).
 
-**Baseline for random vectors:** For vectors drawn uniformly on the unit sphere $S^{d-1}$ in $\mathbb{R}^d$, the expected cosine between any two is exactly 0, with variance $\mathcal{O}(1/d)$. In $d = 2{,}560$, random vectors have cosine $\approx 0 \pm 0.02$. So $\bar{c} \gg 0$ is a clear signal of anisotropy.
+**Baseline for random vectors:** For vectors drawn uniformly on the unit sphere $S^{d-1}$ in $\mathbb{R}^d$, the expected cosine between any two is exactly 0, with variance $\mathcal{O}(1/d)$. In $d = 2{,}560$, random vectors have cosine $\approx 0 \pm 0.02$. So $\overline{c} \gg 0$ is a clear signal of anisotropy.
 
 #### Decomposing anisotropy: is it "real" or just a shared mean?
 
-A high $\bar{c}$ could arise from two very different situations:
+A high $\overline{c}$ could arise from two very different situations:
 
 1. **Mean-direction anisotropy:** All vectors have a large shared component (like a DC offset). They point in roughly the same direction not because of interesting structure, but because they all contain the same bias term.
 2. **Intrinsic anisotropy:** Even after removing the shared component, vectors cluster in a low-dimensional subspace — there's genuine geometric structure.
 
 To disentangle these, decompose each vector into its shared and unique parts:
 
-$$\mathbf{h}_i = \underbrace{\bar{\mathbf{h}}}_{\text{shared mean}} + \underbrace{\tilde{\mathbf{h}}_i}_{\text{deviation from mean}}$$
+$$\mathbf{h}_i = \underbrace{\overline{\mathbf{h}}}_{\text{shared mean}} + \underbrace{\tilde{\mathbf{h}}_i}_{\text{deviation from mean}}$$
 
-where $\bar{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$. By construction, $\sum_i \tilde{\mathbf{h}}_i = \mathbf{0}$.
+where $\overline{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$. By construction, $\sum_i \tilde{\mathbf{h}}_i = \mathbf{0}$.
 
 Now expand the inner product between any two vectors:
 
-$$\langle \mathbf{h}_i, \mathbf{h}_j \rangle = \langle \bar{\mathbf{h}} + \tilde{\mathbf{h}}_i,\ \bar{\mathbf{h}} + \tilde{\mathbf{h}}_j \rangle$$
+$$\langle \mathbf{h}_i, \mathbf{h}_j \rangle = \langle \overline{\mathbf{h}} + \tilde{\mathbf{h}}_i,\ \overline{\mathbf{h}} + \tilde{\mathbf{h}}_j \rangle$$
 
-$$= \underbrace{\lVert \bar{\mathbf{h}} \rVert^2}_{\text{(A) shared component}} + \underbrace{\langle \bar{\mathbf{h}},\, \tilde{\mathbf{h}}_i \rangle + \langle \bar{\mathbf{h}},\, \tilde{\mathbf{h}}_j \rangle}_{\text{(B) cross terms}} + \underbrace{\langle \tilde{\mathbf{h}}_i,\, \tilde{\mathbf{h}}_j \rangle}_{\text{(C) intrinsic similarity}}$$
+$$= \underbrace{\lVert \overline{\mathbf{h}} \rVert^2}_{\text{(A) shared component}} + \underbrace{\langle \overline{\mathbf{h}},\, \tilde{\mathbf{h}}_i \rangle + \langle \overline{\mathbf{h}},\, \tilde{\mathbf{h}}_j \rangle}_{\text{(B) cross terms}} + \underbrace{\langle \tilde{\mathbf{h}}_i,\, \tilde{\mathbf{h}}_j \rangle}_{\text{(C) intrinsic similarity}}$$
 
-**When the mean dominates** ($\lVert \bar{\mathbf{h}} \rVert \gg \lVert \tilde{\mathbf{h}}_i \rVert$ for typical $i$): Term (A) dominates. The norms are $\lVert \mathbf{h}_i \rVert \approx \lVert \bar{\mathbf{h}} \rVert$. So:
+**When the mean dominates** ($\lVert \overline{\mathbf{h}} \rVert \gg \lVert \tilde{\mathbf{h}}_i \rVert$ for typical $i$): Term (A) dominates. The norms are $\lVert \mathbf{h}_i \rVert \approx \lVert \overline{\mathbf{h}} \rVert$. So:
 
-$$\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \lVert \mathbf{h}_j \rVert} \approx \frac{\lVert \bar{\mathbf{h}} \rVert^2}{\lVert \bar{\mathbf{h}} \rVert^2} = 1$$
+$$\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \lVert \mathbf{h}_j \rVert} \approx \frac{\lVert \overline{\mathbf{h}} \rVert^2}{\lVert \overline{\mathbf{h}} \rVert^2} = 1$$
 
 All vectors look similar — but only because they share the same large mean direction, not because of intrinsic clustering.
 
-**The diagnostic:** Compute $\bar{c}$ on the centered vectors $\tilde{\mathbf{h}}_i = \mathbf{h}_i - \bar{\mathbf{h}}$. This removes term (A) entirely, isolating the intrinsic anisotropy (C). If centered cosine $\approx 0$, all observed anisotropy was due to the shared mean. If centered cosine $\gg 0$, there's genuine geometric clustering beyond the mean direction.
+**The diagnostic:** Compute $\overline{c}$ on the centered vectors $\tilde{\mathbf{h}}_i = \mathbf{h}_i - \overline{\mathbf{h}}$. This removes term (A) entirely, isolating the intrinsic anisotropy (C). If centered cosine $\approx 0$, all observed anisotropy was due to the shared mean. If centered cosine $\gg 0$, there's genuine geometric clustering beyond the mean direction.
 
 ### 3. Spectral Flatness
 
@@ -176,17 +176,17 @@ The metrics above treat all tokens as one undifferentiated cloud. But our tokens
 
 Partition tokens into $C$ categories. For each, measure how similar tokens are *within* and *between* categories:
 
-$$\bar{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \left(\text{mean cosine between pairs within category } c\right)$$
+$$\overline{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \left(\text{mean cosine between pairs within category } c\right)$$
 
-$$\bar{c}_{\text{inter}} = \text{mean cosine between pairs from different categories}$$
+$$\overline{c}_{\text{inter}} = \text{mean cosine between pairs from different categories}$$
 
-If $\bar{c}_{\text{intra}} > \bar{c}_{\text{inter}}$, tokens within a category are more similar to each other than to outsiders — the category has geometric coherence.
+If $\overline{c}_{\text{intra}} > \overline{c}_{\text{inter}}$, tokens within a category are more similar to each other than to outsiders — the category has geometric coherence.
 
 #### The separation ratio
 
-The raw difference $\bar{c}_{\text{intra}} - \bar{c}_{\text{inter}}$ is hard to interpret in isolation (is 0.05 a lot?). We normalize by the inter-category baseline:
+The raw difference $\overline{c}_{\text{intra}} - \overline{c}_{\text{inter}}$ is hard to interpret in isolation (is 0.05 a lot?). We normalize by the inter-category baseline:
 
-$$S = \frac{\bar{c}_{\text{intra}} - \bar{c}_{\text{inter}}}{|\bar{c}_{\text{inter}}| + \epsilon}$$
+$$S = \frac{\overline{c}_{\text{intra}} - \overline{c}_{\text{inter}}}{|\overline{c}_{\text{inter}}| + \epsilon}$$
 
 where $\epsilon = 10^{-10}$ prevents division by zero. $S > 0$ means categories are distinguishable; larger $S$ means stronger separation.
 
