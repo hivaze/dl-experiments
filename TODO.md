@@ -84,7 +84,7 @@ Qwen3 supports `/think` mode with extended reasoning. Do thinking tokens and ans
 - Layer knockout (T-2) split by phase: are different layers critical for coherent thinking vs correct final answers?
 - Attention pattern comparison: do thinking tokens attend more broadly (exploring context) while answer tokens attend narrowly (retrieving)?
 
-### T-15. Normalization Layer Analysis & Replacement
+### T-15. Normalization Layer Analysis & Replacement ✅ [completed](experiments/t15_normalization/)
 Comprehensive study of normalization methods: forward/backward behavior, computational trade-offs, and feasibility of swapping norm layers in a pretrained model without (or with minimal) fine-tuning.
 
 **Normalization methods to investigate:**
