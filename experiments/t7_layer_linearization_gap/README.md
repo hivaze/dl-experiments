@@ -19,184 +19,234 @@ Each transformer layer applies a nonlinear transformation g(x) = layer(x) - x to
 
 ## Mathematical Framework
 
+### The Core Question
+
+A transformer layer takes a vector $\mathbf{x}$ (the "residual stream" at that depth) and returns a modified vector. If that transformation is *approximately linear*, the layer could be replaced by a simple matrix multiply — which is dramatically cheaper than running full attention + MLP. The goal of this experiment is to measure exactly how nonlinear each layer actually is on real data.
+
+The challenge: "nonlinear" is not a single number. A layer can be smooth locally but vary wildly across inputs. It can be linear in some directions but not others. It can look linear at small scales but reveal nonlinearity at large scales. We need multiple complementary measurements, each capturing a different aspect. This framework defines those measurements and explains why each one matters.
+
 ### Notation
 
-For transformer layer l, define:
-- $\mathbf{x} \in \mathbb{R}^{B \times T \times d}$: the input hidden states (residual stream), where B=batch, T=seq_len, d=2560
-- $g: \mathbb{R}^d \to \mathbb{R}^d$: the non-residual transform (what the layer *adds* to the residual stream), applied per-token
-- $\mathbf{J}_g(\mathbf{x}) \in \mathbb{R}^{d \times d}$: the Jacobian $\partial g / \partial \mathbf{x}$ evaluated at $\mathbf{x}$ (per-token)
+Each transformer layer computes:
 
-The layer's full operation is $\mathbf{x} \to \mathbf{x} + g(\mathbf{x})$ (residual connection). The function $g$ decomposes as:
-
-$$g(\mathbf{x}) = f_{\text{attn}}(\mathbf{x}) + f_{\text{mlp}}(\mathbf{x} + f_{\text{attn}}(\mathbf{x}))$$
+$$\mathbf{x}_{\text{out}} = \mathbf{x} + g(\mathbf{x})$$
 
 where:
+- $\mathbf{x} \in \mathbb{R}^d$ is the input hidden state for a single token ($d = 2560$)
+- $g(\mathbf{x})$ is what the layer *adds* to the residual stream (the attention + MLP computation)
+- The $+ \mathbf{x}$ is the residual (skip) connection — the layer's output is the input plus a correction
 
-$$f_{\text{attn}}(\mathbf{x}) = \mathbf{W}_o \cdot \text{Attn}(\mathbf{W}_q \cdot \text{RMSNorm}(\mathbf{x}),\; \mathbf{W}_k \cdot \text{RMSNorm}(\mathbf{x}),\; \mathbf{W}_v \cdot \text{RMSNorm}(\mathbf{x}))$$
+We isolate $g$ because the residual connection is already perfectly linear. All the nonlinearity lives in $g$.
 
-$$f_{\text{mlp}}(\mathbf{h}) = \mathbf{W}_{\text{down}} \cdot (\text{SiLU}(\mathbf{W}_{\text{gate}} \cdot \text{RMSNorm}(\mathbf{h})) \odot (\mathbf{W}_{\text{up}} \cdot \text{RMSNorm}(\mathbf{h})))$$
+The function $g$ decomposes into two stages applied sequentially:
 
-The nonlinear components are:
-1. **Softmax** in attention: $\text{softmax}(\mathbf{Q}\mathbf{K}^\top / \sqrt{d_k})$ — quadratic in Q, K via the bilinear form, then nonlinear via exp
-2. **SiLU** ($= x \cdot \sigma(x)$) in SwiGLU: smooth, approximately linear near 0, approximately identity for large positive x
-3. **RMSNorm**: $\mathbf{x} \to \mathbf{x} \cdot \sqrt{d} / \|\mathbf{x}\|_2$ — projects onto the unit sphere, making $g$ scale-invariant
+$$g(\mathbf{x}) = f_{\text{attn}}(\mathbf{x}) + f_{\text{mlp}}\big(\mathbf{x} + f_{\text{attn}}(\mathbf{x})\big)$$
 
-### Fréchet Derivative and Linearization
+The attention sublayer:
 
-The Fréchet derivative of $g$ at $\mathbf{x}$ is the bounded linear operator $Dg(\mathbf{x}): \mathbb{R}^d \to \mathbb{R}^d$ such that:
+$$f_{\text{attn}}(\mathbf{x}) = W_o \cdot \text{Attn}\big(W_q \cdot \text{RMSNorm}(\mathbf{x}),\; W_k \cdot \text{RMSNorm}(\mathbf{x}),\; W_v \cdot \text{RMSNorm}(\mathbf{x})\big)$$
 
-$$g(\mathbf{x} + \mathbf{h}) = g(\mathbf{x}) + Dg(\mathbf{x})[\mathbf{h}] + o(\|\mathbf{h}\|)$$
+The MLP sublayer (SwiGLU):
 
-For finite-dimensional $g$, $Dg(\mathbf{x})$ is represented by the Jacobian matrix $\mathbf{J}_g(\mathbf{x}) \in \mathbb{R}^{d \times d}$:
+$$f_{\text{mlp}}(\mathbf{h}) = W_{\text{down}} \cdot \Big[\text{SiLU}\big(W_{\text{gate}} \cdot \text{RMSNorm}(\mathbf{h})\big) \odot \big(W_{\text{up}} \cdot \text{RMSNorm}(\mathbf{h})\big)\Big]$$
 
-$$[\mathbf{J}_g(\mathbf{x})]_{ij} = \frac{\partial g_i}{\partial x_j}$$
+There are three sources of nonlinearity inside $g$:
 
-The linearization of $g$ at $\mathbf{x}$ is:
+1. **Softmax** in attention: $\text{softmax}(QK^\top / \sqrt{d_k})$ — the $QK^\top$ product is bilinear (quadratic in the input), then $\exp$ makes it fully nonlinear
+2. **SiLU** ($= x \cdot \sigma(x)$) in SwiGLU: a smooth gating function — approximately linear near 0, approximately identity for large positive $x$
+3. **RMSNorm**: $\mathbf{x} \mapsto \mathbf{x} \cdot \sqrt{d} / \|\mathbf{x}\|_2$ — normalizes the magnitude, making the output depend only on the *direction* of $\mathbf{x}$
 
-$$g_{\text{lin}}(\mathbf{x} + \mathbf{h}) = g(\mathbf{x}) + \mathbf{J}_g(\mathbf{x}) \, \mathbf{h}$$
+### Linearization: The Best Linear Approximation
 
-This is the best linear approximation to $g$ near $\mathbf{x}$. The **linearization gap** measures how well this approximation works for perturbations of a given size.
+**The idea.** Any smooth function, no matter how complex, looks linear when you zoom in far enough. Think of a curve on a map — at city-block scale it curves, but at centimeter scale it's a straight line. The same applies to $g$: near any specific input $\mathbf{x}$, we can approximate $g$ by a linear function. The question is: *how far can we zoom out before this approximation breaks down?*
 
-### Taylor Expansion and Error Analysis
+**The Jacobian matrix.** The linear approximation of $g$ at point $\mathbf{x}$ is given by its Jacobian, the $d \times d$ matrix of partial derivatives:
 
-For a twice-differentiable function $g$, the second-order Taylor expansion at $\mathbf{x}$ gives:
+$$\mathbf{J}_g(\mathbf{x}) \in \mathbb{R}^{d \times d}, \qquad [\mathbf{J}_g]_{ij} = \frac{\partial g_i}{\partial x_j}$$
 
-$$g(\mathbf{x} + \varepsilon \mathbf{d}) = g(\mathbf{x}) + \varepsilon \, \mathbf{J}_g(\mathbf{x}) \, \mathbf{d} + \frac{\varepsilon^2}{2} \, \mathbf{d}^\top \mathbf{H}_g(\mathbf{x}) \, \mathbf{d} + \mathcal{O}(\varepsilon^3)$$
+Each row $i$ tells you: "if I wiggle the input, how does output dimension $i$ respond?" Each column $j$ tells you: "if I wiggle input dimension $j$, how do all outputs respond?"
 
-where $\mathbf{H}_g(\mathbf{x})$ is the Hessian tensor ($d \times d \times d$ array of second derivatives), and $\mathbf{d}^\top \mathbf{H}_g \mathbf{d}$ denotes the bilinear contraction.
+**The linear approximation.** For a small perturbation $\mathbf{h}$:
 
-The key quantities are:
+$$g(\mathbf{x} + \mathbf{h}) \approx g(\mathbf{x}) + \mathbf{J}_g(\mathbf{x}) \cdot \mathbf{h}$$
 
-$$\Delta = g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x}) = \varepsilon \mathbf{J} \mathbf{d} + \frac{\varepsilon^2}{2} \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3) \quad \text{(actual displacement)}$$
+This says: "the change in output equals the Jacobian times the change in input." It is the best possible linear prediction. The **linearization gap** measures how badly this approximation fails — i.e., how much nonlinear behavior is left over.
 
-$$\hat{\Delta} = \varepsilon \, \mathbf{J}_g(\mathbf{x}) \, \mathbf{d} = \varepsilon \mathbf{J} \mathbf{d} \quad \text{(linear prediction)}$$
+### The Gap: Quantifying the Approximation Error
 
-$$\mathbf{r} = \Delta - \hat{\Delta} = \frac{\varepsilon^2}{2} \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3) \quad \text{(2nd-order residual)}$$
+**Taylor expansion.** To understand the error, we expand $g$ to second order. Perturb the input by $\varepsilon \mathbf{d}$, where $\mathbf{d}$ is a unit direction and $\varepsilon$ controls the perturbation size:
 
-The **perturbation gap** is the relative magnitude of this residual:
+$$g(\mathbf{x} + \varepsilon \mathbf{d}) = \underbrace{g(\mathbf{x})}_{\text{value at base point}} + \underbrace{\varepsilon \, \mathbf{J} \mathbf{d}}_{\text{1st order (linear)}} + \underbrace{\frac{\varepsilon^2}{2} \, \mathbf{H}[\mathbf{d}, \mathbf{d}]}_{\text{2nd order (quadratic)}} + \underbrace{\mathcal{O}(\varepsilon^3)}_{\text{higher order}}$$
 
-$$\text{gap}(\mathbf{x}, \mathbf{d}, \varepsilon) = \frac{\|\mathbf{r}\|}{\|\Delta\|} = \frac{\|\Delta - \hat{\Delta}\|}{\|\Delta\|}$$
+Here $\mathbf{H}$ is the Hessian tensor (second derivatives of $g$), and $\mathbf{H}[\mathbf{d}, \mathbf{d}]$ is the second-order correction in direction $\mathbf{d}$. We write $\mathbf{J}$ as shorthand for $\mathbf{J}_g(\mathbf{x})$.
 
-**Scaling with** $\varepsilon$**:** For a fixed direction $\mathbf{d}$:
+Now define three quantities:
 
-$$\|\mathbf{r}\| \sim \frac{\varepsilon^2}{2} \|\mathbf{H}[\mathbf{d}, \mathbf{d}]\| \quad \text{(2nd-order term dominates } \mathbf{r}\text{)}$$
+**Actual displacement** — what really happens when we perturb the input:
 
-$$\|\Delta\| \sim \varepsilon \|\mathbf{J} \mathbf{d}\| \quad \text{(1st-order term dominates } \Delta\text{)}$$
+$$\Delta = g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x}) = \varepsilon \, \mathbf{J} \mathbf{d} + \frac{\varepsilon^2}{2} \, \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3)$$
 
-$$\text{gap} \sim \frac{\varepsilon \, \|\mathbf{H}[\mathbf{d}, \mathbf{d}]\|}{2 \|\mathbf{J} \mathbf{d}\|} \quad \text{(gap is linear in } \varepsilon \text{ for quadratic nonlinearity)}$$
+**Linear prediction** — what the Jacobian predicts should happen:
 
-More generally, if the dominant nonlinearity is degree $k$ (e.g., $k=2$ for softmax's quadratic form, $k=3$ for cubic terms), then $\text{gap} \sim \varepsilon^{k-1}$. The multi-scale analysis fits this power law.
+$$\hat{\Delta} = \varepsilon \, \mathbf{J} \mathbf{d}$$
 
-### Central Difference Approximation
+**Residual** — the part the linear approximation misses:
 
-We estimate $\mathbf{J}_g(\mathbf{x}) \mathbf{d}$ using central finite differences:
+$$\mathbf{r} = \Delta - \hat{\Delta} = \frac{\varepsilon^2}{2} \, \mathbf{H}[\mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^3)$$
 
-$$\mathbf{J}_g(\mathbf{x}) \, \mathbf{d} \approx \frac{g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x} - \varepsilon \mathbf{d})}{2\varepsilon}$$
+The **perturbation gap** is the relative size of this residual:
 
-**Error analysis:** The Taylor expansion of both terms:
+$$\text{gap} = \frac{\|\mathbf{r}\|}{\|\Delta\|} = \frac{\|\text{actual} - \text{linear prediction}\|}{\|\text{actual}\|}$$
+
+A gap of 0.13 means: "87% of what the layer does is captured by the linear approximation; 13% is genuinely nonlinear."
+
+**How the gap scales with perturbation size.** For small $\varepsilon$:
+
+- The residual grows as $\|\mathbf{r}\| \sim \varepsilon^2$ (dominated by the Hessian term)
+- The actual displacement grows as $\|\Delta\| \sim \varepsilon$ (dominated by the Jacobian term)
+- Their ratio: $\text{gap} \sim \varepsilon^2 / \varepsilon = \varepsilon$
+
+So for a function with quadratic nonlinearity (like softmax or SiLU), doubling the perturbation size doubles the gap. More generally, if the leading nonlinearity is degree $k$ (quadratic: $k=2$, cubic: $k=3$), the gap scales as $\varepsilon^{k-1}$. The multi-scale analysis (Method 5) measures this exponent.
+
+### Central Differences: Computing Jacobian-Vector Products Efficiently
+
+**The problem.** The Jacobian $\mathbf{J}$ is a $2560 \times 2560$ matrix (~26 million entries). We cannot store it or compute it fully. But we don't need the full matrix — we only need its product with specific direction vectors, $\mathbf{J} \mathbf{d}$.
+
+**The trick.** By definition, $\mathbf{J} \mathbf{d}$ is the derivative of $g$ in direction $\mathbf{d}$. We can approximate this with finite differences — evaluate $g$ at two nearby points and take the slope.
+
+**Forward difference** (the naive approach):
+
+$$\mathbf{J} \mathbf{d} \approx \frac{g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x})}{\varepsilon}$$
+
+**Central difference** (what we actually use):
+
+$$\mathbf{J} \mathbf{d} \approx \frac{g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x} - \varepsilon \mathbf{d})}{2\varepsilon}$$
+
+**Why central is better.** Expand both evaluations via Taylor series:
 
 $$g(\mathbf{x} + \varepsilon \mathbf{d}) = g(\mathbf{x}) + \varepsilon \mathbf{J} \mathbf{d} + \frac{\varepsilon^2}{2} \mathbf{H}[\mathbf{d}, \mathbf{d}] + \frac{\varepsilon^3}{6} \mathbf{T}[\mathbf{d}, \mathbf{d}, \mathbf{d}] + \cdots$$
 
 $$g(\mathbf{x} - \varepsilon \mathbf{d}) = g(\mathbf{x}) - \varepsilon \mathbf{J} \mathbf{d} + \frac{\varepsilon^2}{2} \mathbf{H}[\mathbf{d}, \mathbf{d}] - \frac{\varepsilon^3}{6} \mathbf{T}[\mathbf{d}, \mathbf{d}, \mathbf{d}] + \cdots$$
 
-Subtracting:
+Note: even powers of $\varepsilon$ have the same sign in both; odd powers flip sign. Subtracting cancels all even-order terms:
 
 $$\frac{g(\mathbf{x} + \varepsilon \mathbf{d}) - g(\mathbf{x} - \varepsilon \mathbf{d})}{2\varepsilon} = \mathbf{J} \mathbf{d} + \frac{\varepsilon^2}{6} \mathbf{T}[\mathbf{d}, \mathbf{d}, \mathbf{d}] + \mathcal{O}(\varepsilon^4)$$
 
-The even-order terms (Hessian) cancel exactly, giving $\mathcal{O}(\varepsilon^2)$ accuracy instead of $\mathcal{O}(\varepsilon)$ for forward differences. This is crucial because:
-- bf16 precision has ~7.8e-3 relative error, requiring $\varepsilon \geq 0.01$
-- At $\varepsilon = 0.05$, forward differences would have $\mathcal{O}(0.05) = 5\%$ Jacobian error
-- Central differences have $\mathcal{O}(0.0025) = 0.25\%$ error — 20x better
+The error is $\mathcal{O}(\varepsilon^2)$ instead of $\mathcal{O}(\varepsilon)$ for forward differences — the Hessian term vanishes. This matters in practice:
+- bf16 has ~7.8e-3 relative precision, forcing $\varepsilon \geq 0.01$ (smaller perturbations drown in rounding noise)
+- At $\varepsilon = 0.05$: forward difference error is ~5%, central difference error is ~0.25% — 20x better
 
 ### bf16 Perturbation Scaling
 
-Direct additive perturbation $\mathbf{x} + \varepsilon \mathbf{d}$ can lose precision when $\|\mathbf{d}\| \ll \|\mathbf{x}\|$ in bf16. We scale perturbations to be proportional to the input norm:
+**The problem.** In bf16 (bfloat16), numbers have only ~3 decimal digits of precision. If $\mathbf{x}$ has magnitude 100 and we add a perturbation of magnitude 0.001, bf16 rounds $100 + 0.001 = 100$ — the perturbation vanishes entirely.
 
-$$\boldsymbol{\delta} = \varepsilon \, \|\mathbf{x}\| \, \hat{\mathbf{d}} \quad \text{where } \hat{\mathbf{d}} = \mathbf{d} / \|\mathbf{d}\| \text{ is a unit direction}$$
+**The fix.** Scale perturbations to be proportional to the input magnitude:
 
-This ensures $\boldsymbol{\delta}$ has the same magnitude order as $\mathbf{x}$, so the bf16 representation of $\mathbf{x} + \boldsymbol{\delta}$ retains the perturbation information. The effective perturbation relative to $\mathbf{x}$ is:
+$$\boldsymbol{\delta} = \varepsilon \cdot \|\mathbf{x}\| \cdot \hat{\mathbf{d}}$$
 
-$$\|\boldsymbol{\delta}\| / \|\mathbf{x}\| = \varepsilon \, \|\hat{\mathbf{d}}\| = \varepsilon$$
+where $\hat{\mathbf{d}} = \mathbf{d} / \|\mathbf{d}\|$ is a unit direction vector. Now $\|\boldsymbol{\delta}\| = \varepsilon \cdot \|\mathbf{x}\|$, so the perturbation is always a fixed *fraction* $\varepsilon$ of the input magnitude, regardless of the absolute scale:
 
-### Homogeneity Gap
+$$\frac{\|\boldsymbol{\delta}\|}{\|\mathbf{x}\|} = \varepsilon$$
 
-Tests **degree-1 homogeneity**: if $g$ were linear and passed through the origin, then $g(\mathbf{x}) = \mathbf{J} \mathbf{x}$ exactly. We compute:
+This keeps $\mathbf{x} + \boldsymbol{\delta}$ representable in bf16 without losing the perturbation to rounding.
+
+### Homogeneity Gap: Does Scaling the Input Scale the Output?
+
+**What it tests.** A truly linear function satisfies $g(\alpha \mathbf{x}) = \alpha \, g(\mathbf{x})$ for any scalar $\alpha$. Equivalently, $g(\mathbf{x}) = \mathbf{J} \mathbf{x}$ (the Jacobian applied to the input itself). The homogeneity gap measures how badly this fails:
+
+$$\text{homogeneity gap} = \frac{\|g(\mathbf{x}) - \mathbf{J} \mathbf{x}\|}{\|g(\mathbf{x})\|}$$
+
+where $\mathbf{J} \mathbf{x}$ is estimated via central differences using perturbation direction $\mathbf{x}$ itself:
 
 $$\mathbf{J} \mathbf{x} \approx \frac{g((1+\varepsilon)\mathbf{x}) - g((1-\varepsilon)\mathbf{x})}{2\varepsilon}$$
 
-$$\text{homogeneity\_gap} = \frac{\|g(\mathbf{x}) - \mathbf{J} \mathbf{x}\|}{\|g(\mathbf{x})\|}$$
-
-**Why it saturates at ~1.0:** RMSNorm normalizes by input magnitude:
+**Why it saturates at ~1.0 for every layer.** RMSNorm normalizes by input magnitude:
 
 $$\text{RMSNorm}(\alpha \mathbf{x}) = \frac{\alpha \mathbf{x} \cdot \sqrt{d}}{\|\alpha \mathbf{x}\|} = \frac{\mathbf{x} \cdot \sqrt{d}}{\|\mathbf{x}\|} = \text{RMSNorm}(\mathbf{x})$$
 
-This makes $g$ approximately **scale-invariant** (degree-0 homogeneous): $g(\alpha \mathbf{x}) \approx g(\mathbf{x})$ for all $\alpha > 0$. Therefore $\partial g / \partial \alpha \approx 0$ at $\alpha = 1$, which means the Jacobian contracted with $\mathbf{x}$ (the radial direction) is near zero:
+The scalar $\alpha$ cancels out. Since every layer passes through RMSNorm before computing attention and MLP, the entire function $g$ becomes approximately **scale-invariant**: $g(\alpha \mathbf{x}) \approx g(\mathbf{x})$ for any $\alpha > 0$. This means the output doesn't change when we scale the input, so the derivative with respect to scale is zero:
 
-$$\mathbf{J} \mathbf{x} = \lim_{\varepsilon \to 0} \frac{g(\mathbf{x} + \varepsilon \mathbf{x}) - g(\mathbf{x})}{\varepsilon} = \lim_{\varepsilon \to 0} \frac{g((1+\varepsilon)\mathbf{x}) - g(\mathbf{x})}{\varepsilon} \approx 0$$
+$$\mathbf{J} \mathbf{x} = \lim_{\varepsilon \to 0} \frac{g((1+\varepsilon)\mathbf{x}) - g(\mathbf{x})}{\varepsilon} \approx 0$$
 
-So the homogeneity gap becomes $\|g(\mathbf{x}) - 0\| / \|g(\mathbf{x})\| = 1$. This is not a bug — it reveals that every layer operates on the *angular* (directional) structure of $\mathbf{x}$, not its magnitude.
+The homogeneity gap becomes $\|g(\mathbf{x}) - 0\| / \|g(\mathbf{x})\| = 1$.
 
-**Geometric interpretation:** RMSNorm projects the residual stream onto a sphere of radius $\sqrt{d}$. Each layer is effectively a map on $S^{d-1}$, the unit sphere in $d$ dimensions. The Jacobian $\mathbf{J}_g$ has a null space that includes the radial direction $\mathbf{x}/\|\mathbf{x}\|$, so its rank is at most $d-1$. This is why the homogeneity gap provides no information about the layer's actual nonlinearity — it's entirely dominated by the geometric constraint of RMSNorm.
+**What this means.** This is not a failure of the metric — it reveals a fundamental geometric fact. RMSNorm projects the residual stream onto a sphere of radius $\sqrt{d}$. Every layer operates on the *direction* of $\mathbf{x}$, not its magnitude. The Jacobian has a null space containing the radial direction $\mathbf{x}/\|\mathbf{x}\|$, so its effective rank is at most $d-1$. The homogeneity gap is uninformative about actual nonlinearity — it is dominated entirely by this geometric constraint.
 
-### Multi-Scale Nonlinearity Order
+### Multi-Scale Analysis: Identifying the Type of Nonlinearity
 
-If the dominant nonlinear term in $g$ is degree $k$, then:
+**The idea.** The perturbation gap at a single scale $\varepsilon$ tells us *how much* nonlinearity there is. By measuring the gap at multiple scales, we can determine *what kind* of nonlinearity dominates.
+
+If the leading nonlinearity is degree $k$, the gap scales as:
 
 $$\text{gap}(\varepsilon) \sim C \cdot \varepsilon^{k-1}$$
 
-where $C$ depends on the Hessian/higher-derivative norms and the Jacobian norm. Taking logarithms:
+Taking logarithms of both sides:
 
-$$\log(\text{gap}) = \log(C) + (k-1) \log(\varepsilon)$$
+$$\log(\text{gap}) = (k-1) \cdot \log(\varepsilon) + \log(C)$$
 
-Linear regression of $\log(\text{gap})$ vs $\log(\varepsilon)$ gives slope $\beta = k-1$, so the estimated nonlinearity order is $k = \beta + 1$.
+This is a straight line in log-log space with slope $\beta = k - 1$. Linear regression of $\log(\text{gap})$ vs $\log(\varepsilon)$ gives the slope, and the nonlinearity order is:
 
-**Expected values:**
-- Purely quadratic nonlinearity (softmax $\mathbf{Q}\mathbf{K}^\top$, SiLU): $k = 2$, slope $= 1$
-- Purely cubic: $k = 3$, slope $= 2$
+$$k = \beta + 1$$
 
-**Why we observe sub-quadratic orders ($k \sim 0.6\text{--}0.8$):** The gap is a ratio $\|\mathbf{r}\|/\|\Delta\|$. At large $\varepsilon$:
-- The numerator $\|\mathbf{r}\|$ grows as $\varepsilon^2$ (Hessian term) but is damped by RMSNorm re-normalization
-- The denominator $\|\Delta\|$ grows as $\varepsilon$ but also gets damped by RMSNorm
+**Expected values:** Purely quadratic nonlinearity (softmax, SiLU) gives $k = 2$, so slope $= 1$. Purely cubic gives $k = 3$, slope $= 2$.
 
-RMSNorm's scale-invariance means that for large perturbations, both the "actual" and "linear" responses are pulled toward the same normalized manifold, reducing their relative difference. The effective gap-vs-$\varepsilon$ curve bends downward in log-log space at large $\varepsilon$, giving an apparent slope $< 1$ (order $< 2$).
+**Why we observe sub-quadratic orders ($k \approx 0.6\text{--}0.8$).** The gap is a *ratio* $\|\mathbf{r}\| / \|\Delta\|$. At larger $\varepsilon$, RMSNorm re-normalization dampens both the numerator and denominator — it pulls both the "actual" and "linear" responses toward the same normalized manifold. This compression bends the log-log curve downward at large $\varepsilon$, giving an apparent slope $< 1$ (order $< 2$).
 
-Additionally, the R² of the log-log fit varies dramatically: early/middle layers have R² ~ 0.34-0.77, but late layers degrade further — layer 33 has R² = 0.19, layer 35 has R² = 0.26, and layers 31-32 are at 0.39-0.44. The poor fit for late layers means the single-power-law model is inadequate there — the true gap-vs-eps curve has significant curvature in log-log space, likely due to the transition between different nonlinearity regimes at different scales. **The nonlinearity order metric (0.78-0.84) reported for layers 33-35 should be treated with caution** given these low R² values.
+Additionally, R² of the log-log fit varies across layers: early/middle layers have R² ~ 0.34-0.77, while late layers can be much worse (layer 33: R² = 0.19, layer 35: R² = 0.26). Low R² means the single-power-law model is inadequate — the gap-vs-$\varepsilon$ curve has curvature in log-log space, likely from transitioning between nonlinearity regimes at different scales. **The nonlinearity order for layers 33-35 (0.78-0.84) should be treated with caution** given these poor fits.
 
-### Spectral Norm via Power Iteration
+### Spectral Norm: Worst-Case Amplification
 
-The spectral norm $\|\mathbf{J}_g\|_2 = \sigma_{\max}(\mathbf{J}_g)$ is estimated via power iteration:
+**Why we need it.** The perturbation gap tells us how nonlinear a layer is. The spectral norm tells us something different: how much a layer can *amplify* perturbations. A layer with spectral norm 2 can take a small input change and double it — this matters for stability (will errors accumulate and explode through 36 layers?).
+
+**Definition.** The spectral norm of $\mathbf{J}$ is its largest singular value:
+
+$$\|\mathbf{J}\|_2 = \sigma_{\max}(\mathbf{J}) = \max_{\|\mathbf{d}\|=1} \|\mathbf{J} \mathbf{d}\|$$
+
+It is the maximum factor by which $\mathbf{J}$ can stretch any unit vector.
+
+**Computation via power iteration.** We can't compute $\sigma_{\max}$ directly (that would require the full $2560 \times 2560$ Jacobian). Instead, we use power iteration — start with a random vector and repeatedly multiply by $\mathbf{J}$, normalizing each time:
 
 $$\mathbf{v}_0 = \text{random unit vector}$$
 
-$$\mathbf{v}_{k+1} = \frac{\mathbf{J} \mathbf{v}_k}{\|\mathbf{J} \mathbf{v}_k\|} \quad \text{(iterate 5 times)}$$
+$$\mathbf{v}_{k+1} = \frac{\mathbf{J} \mathbf{v}_k}{\|\mathbf{J} \mathbf{v}_k\|}$$
 
-$$\|\mathbf{J}\|_2 \approx \|\mathbf{J} \mathbf{v}_5\|$$
+After $K$ iterations, $\|\mathbf{J} \mathbf{v}_K\| \approx \sigma_{\max}$. Each $\mathbf{J} \mathbf{v}$ product is computed via central differences (no need to store $\mathbf{J}$):
 
-where each $\mathbf{J} \mathbf{v}$ product is estimated via central differences: $\mathbf{J} \mathbf{v} \approx [g(\mathbf{x} + \varepsilon \|\mathbf{x}\| \mathbf{v}) - g(\mathbf{x} - \varepsilon \|\mathbf{x}\| \mathbf{v})] / (2\varepsilon \|\mathbf{x}\|)$.
+$$\mathbf{J} \mathbf{v} \approx \frac{g(\mathbf{x} + \varepsilon \|\mathbf{x}\| \mathbf{v}) - g(\mathbf{x} - \varepsilon \|\mathbf{x}\| \mathbf{v})}{2\varepsilon \|\mathbf{x}\|}$$
 
-Power iteration converges geometrically: after $k$ iterations, the error is $\mathcal{O}((\sigma_2/\sigma_1)^k)$ where $\sigma_1, \sigma_2$ are the two largest singular values of $\mathbf{J}$. With 5 iterations and typical $\sigma_2/\sigma_1 \sim 0.5\text{--}0.8$, the error is ~3-33%.
+**Convergence.** After $K$ iterations, error is $\mathcal{O}\big((\sigma_2/\sigma_1)^K\big)$ where $\sigma_1, \sigma_2$ are the two largest singular values. With $K=5$ and typical ratio $\sigma_2/\sigma_1 \sim 0.5\text{--}0.8$, the error is ~3-33%.
 
-**Interpretation:** $\|\mathbf{J}_g\|_2$ is the worst-case amplification factor. If $\|\mathbf{J}_g\|_2 > 1$, perturbations can grow through the layer; if $< 1$, they shrink. The full layer Jacobian is $\mathbf{J}_{\text{layer}} = \mathbf{I} + \mathbf{J}_g$, so the layer's spectral norm is approximately $1 + \|\mathbf{J}_g\|_2$ (when $\mathbf{J}_g$'s top singular vector aligns with the residual). For stable training/inference, we need the product of all layer spectral norms to not explode — which is ensured when most layers have $\|\mathbf{J}_g\|_2 < 1$ (contractive).
+**Interpretation for stability.** The full layer (with residual connection) has Jacobian $\mathbf{I} + \mathbf{J}_g$. If $\|\mathbf{J}_g\|_2 < 1$, every perturbation shrinks through the layer — the layer is contractive. If $\|\mathbf{J}_g\|_2 > 1$, some perturbation directions get amplified. For stable propagation through 36 layers, we need most layers to be contractive (or at least not strongly expansive).
 
-### Mean Amplification
+### Mean Amplification: Typical Behavior
 
-$$\mathbb{E}[\|\mathbf{J} \hat{\mathbf{d}}\|] = \frac{1}{N} \sum_{i=1}^{N} \|\mathbf{J} \mathbf{d}_i\|$$
+**Why we need it.** The spectral norm captures the *worst case* — the single direction that gets amplified most. But most input perturbations won't align with that direction. Mean amplification measures the *average* amplification across random directions:
 
-averaged over $N$ random unit directions $\mathbf{d}_i$. This measures the *typical* amplification of the Jacobian, as opposed to the worst-case (spectral norm). By the Johnson-Lindenstrauss-type concentration of norm of Gaussian projections:
+$$\text{mean amplification} = \frac{1}{N} \sum_{i=1}^{N} \|\mathbf{J} \mathbf{d}_i\|$$
 
-$$\mathbb{E}[\|\mathbf{J} \hat{\mathbf{d}}\|^2] = \frac{\|\mathbf{J}\|_F^2}{d} = \frac{\sum \sigma_i^2(\mathbf{J})}{d}$$
+where $\mathbf{d}_i$ are random unit vectors.
 
-So mean amplification $\approx \|\mathbf{J}\|_F / \sqrt{d}$, which is the "average singular value" of $\mathbf{J}$. If most singular values are $< 1$, the mean amplification is $< 1$ even if a few singular values are $> 1$.
+**Connection to singular values.** For random unit vectors in $\mathbb{R}^d$, the expected squared norm of $\mathbf{J} \mathbf{d}$ equals the average squared singular value:
 
-### Jacobian Consistency and Global Linearizability
+$$\mathbb{E}\big[\|\mathbf{J} \mathbf{d}\|^2\big] = \frac{\|\mathbf{J}\|_F^2}{d} = \frac{\sigma_1^2 + \sigma_2^2 + \cdots + \sigma_d^2}{d}$$
 
-A layer $g$ is **locally linear** at $\mathbf{x}$ if $\|g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x}) - \mathbf{J}(\mathbf{x})\boldsymbol{\delta}\| / \|g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x})\| \ll 1$ for small $\boldsymbol{\delta}$ (Methods 1-5 measure this). But a layer is **globally linear** only if there exists a single matrix $\mathbf{W}$ such that $g(\mathbf{x}) \approx \mathbf{W}\mathbf{x}$ for all inputs $\mathbf{x}$ on the data manifold. Global linearity requires that the Jacobian be approximately constant: $\mathbf{J}(\mathbf{x}_1) \approx \mathbf{J}(\mathbf{x}_2)$ for all data points.
+So mean amplification $\approx \|\mathbf{J}\|_F / \sqrt{d}$, the RMS (root-mean-square) singular value. If this is $< 1$, the layer is *typically* contractive even if a few singular values exceed 1.
 
-To quantify this, define the **Jacobian consistency** of layer $g$ as:
+### Jacobian Consistency: Local vs Global Linearity
 
-$$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \mathbb{E}_{(\mathbf{x}_i, \mathbf{x}_j)} \left[ \cos\left(\frac{\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}}{\|\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}\|},\; \frac{\mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}}{\|\mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\|}\right) \right] \right]$$
+**The key distinction.** Everything above measures nonlinearity *at a single input* $\mathbf{x}$. But the practical question is: can we replace a layer with one fixed linear map $W$ that works for *all* inputs?
 
-where $\hat{\mathbf{d}}$ is a random unit direction and $(\mathbf{x}_i, \mathbf{x}_j)$ are pairs of data points. $C_g = 1$ means the Jacobian maps every direction identically at all inputs → globally linear. $C_g \to 0$ means the Jacobian rotates outputs inconsistently → only locally linear.
+- **Locally linear**: at each input $\mathbf{x}$, the function is well-approximated by its Jacobian $\mathbf{J}(\mathbf{x})$ — the perturbation gap is small
+- **Globally linear**: the Jacobian is approximately the *same matrix* at all inputs — one $W$ works everywhere
+
+A layer can be locally linear but globally nonlinear. Think of a function like $g(x) = x^2$: at any point, the tangent line is a good local fit, but different points have different slopes. Similarly, a transformer layer might apply smooth, nearly-linear attention routing at each input, but the *routing pattern itself* changes with input content — so the Jacobian at input $\mathbf{x}_1$ is a different matrix than at input $\mathbf{x}_2$.
+
+**Measuring consistency.** Pick a random direction $\hat{\mathbf{d}}$, and compute $\mathbf{J}(\mathbf{x}_i) \hat{\mathbf{d}}$ at multiple data points $\mathbf{x}_1, \ldots, \mathbf{x}_K$. If the Jacobian is the same everywhere, all these vectors should point in the same direction. We measure this via pairwise cosine similarity:
+
+$$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \; \underset{i \neq j}{\text{mean}} \; \cos\!\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}, \;\; \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
+
+- $C_g = 1$: the Jacobian maps every direction identically at all inputs — the layer is globally linear
+- $C_g \to 0$: the Jacobian rotates outputs inconsistently across inputs — only locally linear
 
 **Why consistency can be low even when the perturbation gap is low:** Consider a layer that performs context-dependent attention routing. At each input $\mathbf{x}$, the softmax attention weights are locally smooth (small perturbations produce smooth responses → low gap). But different inputs produce *different* attention patterns, so the Jacobian at $\mathbf{x}_1$ is a different matrix than at $\mathbf{x}_2$. The layer is a smooth function everywhere, but it's a *different* smooth function at each point.
 

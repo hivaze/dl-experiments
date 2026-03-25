@@ -36,112 +36,190 @@ Note: Q has 32 heads but K/V have only 8 (grouped-query attention), so K/V are 4
 
 ## Mathematical Framework
 
+### Why Spectral Analysis?
+
+Every weight matrix in a transformer is a linear map: it takes an input vector and produces an output vector. But not all directions in the input space matter equally. Some directions get amplified strongly (the matrix "cares" about them), while others get shrunk to near-zero (the matrix effectively ignores them). **Spectral analysis reveals which directions matter and by how much**, answering a fundamental question: how much of its theoretical capacity does each weight matrix actually use?
+
+This has direct practical consequences:
+- If a matrix only uses 25% of its capacity, you can compress it (LoRA, pruning, factorization) with minimal quality loss.
+- If certain matrix types (Q vs V) systematically differ in capacity usage, that reveals something about what computation each matrix performs.
+- If capacity usage changes across depth, that tells us which layers are doing simple vs complex work.
+
+The tool for this analysis is the **Singular Value Decomposition (SVD)**.
+
 ### Singular Value Decomposition
 
-For a weight matrix $\mathbf{W} \in \mathbb{R}^{m \times n}$ with $m \ge n$, the SVD is:
+**The core idea.** Any matrix can be decomposed into a sequence of simple operations: rotate the input, scale each coordinate independently, then rotate the output. The scaling factors (singular values) tell us how much each independent "channel" of the matrix amplifies its input.
 
-$$\mathbf{W} = \mathbf{U} \, \text{diag}(\sigma_1, \ldots, \sigma_n) \, \mathbf{V}^\top$$
+**Formal definition.** For a weight matrix $W \in \mathbb{R}^{m \times n}$ with $m \ge n$:
 
-where $\mathbf{U} \in \mathbb{R}^{m \times n}$ has orthonormal columns, $\mathbf{V} \in \mathbb{R}^{n \times n}$ is orthogonal, and $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n \ge 0$ are the singular values. The singular values characterize the "importance" of each rank-1 component: the best rank-$r$ approximation (in Frobenius norm) is obtained by keeping only the top $r$ singular values (Eckart-Young-Mirsky theorem):
+$$W = U \cdot \text{diag}(\sigma_1, \ldots, \sigma_n) \cdot V^\top$$
 
-$$\mathbf{W}_r = \mathbf{U}_r \, \text{diag}(\sigma_1, \ldots, \sigma_r) \, \mathbf{V}_r^\top$$
+where:
+- $V \in \mathbb{R}^{n \times n}$ is orthogonal — it defines $n$ "input directions" (right singular vectors)
+- $U \in \mathbb{R}^{m \times n}$ has orthonormal columns — it defines $n$ "output directions" (left singular vectors)
+- $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n \ge 0$ are the **singular values**, sorted from largest to smallest
 
-$$\|\mathbf{W} - \mathbf{W}_r\|_F^2 = \sum_{i=r+1}^{n} \sigma_i^2$$
+**Geometric picture.** When $W$ acts on an input $x$:
 
-This is the theoretical foundation for low-rank adaptation (LoRA): if $\sigma_i$ decays rapidly, a low-rank approximation captures most of the matrix's action.
+1. $V^\top$ rotates $x$ into the matrix's "natural coordinate system" (input basis)
+2. Each coordinate $i$ is scaled by $\sigma_i$
+3. $U$ rotates the result into the output space
+
+So $\sigma_i$ measures the gain along the $i$-th independent channel. A large $\sigma_1$ with small $\sigma_n$ means the matrix strongly prefers certain input directions over others.
+
+**Why this matters for compression.** The best rank-$r$ approximation to $W$ (Eckart-Young-Mirsky theorem) is obtained by keeping only the top $r$ singular values and zeroing the rest:
+
+$$W_r = U_r \cdot \text{diag}(\sigma_1, \ldots, \sigma_r) \cdot V_r^\top$$
+
+The approximation error is the energy left in the discarded singular values:
+
+$$\|W - W_r\|_F^2 = \sigma_{r+1}^2 + \sigma_{r+2}^2 + \cdots + \sigma_n^2$$
+
+If singular values decay fast, a small $r$ captures most of the matrix's action — this is the theoretical foundation for LoRA and low-rank factorization.
 
 ### Effective Rank (Participation Ratio)
 
-The participation ratio measures how many singular values contribute "meaningfully" to the matrix. Define the normalized squared singular value distribution:
+**The problem.** A matrix's mathematical rank (number of nonzero singular values) is almost always equal to $\min(m, n)$ for trained neural networks — numerically, no singular value is exactly zero. But many singular values may be negligibly small. We need a continuous measure of "how many singular values actually matter."
 
-$$p_i = \frac{\sigma_i^2}{\sum_j \sigma_j^2}$$
+**Step 1: Turn singular values into a probability distribution.** Define:
 
-This is a probability distribution over the $n$ singular value "modes". The participation ratio is the inverse of the sum of squared probabilities (also known as the inverse Simpson index):
+$$p_i = \frac{\sigma_i^2}{\sum_{j=1}^n \sigma_j^2}$$
 
-$$\text{PR}(\mathbf{W}) = \frac{\left(\sum_i p_i\right)^2}{\sum_i p_i^2} = \frac{\left(\sum_i \sigma_i^2\right)^2}{\sum_i \sigma_i^4}$$
+Here $\sigma_i^2$ is the energy (variance) carried by the $i$-th channel, so $p_i$ is the fraction of total energy in channel $i$. Since all $p_i \ge 0$ and $\sum_i p_i = 1$, this is a valid probability distribution — it describes how energy is distributed across singular value modes.
 
-**Properties:**
-- If all energy is in one singular value: PR = 1
-- If energy is uniformly distributed across $k$ modes: PR = $k$
-- PR ranges from 1 to $n = \min(m, n)$
-- $\text{PR} = \exp(2 H_2)$ where $H_2 = -\log(\sum p_i^2)$ is the Renyi entropy of order 2
+**Step 2: Measure concentration.** If energy is spread uniformly, all $p_i = 1/n$ and the distribution is "flat." If energy is concentrated in a few modes, a few $p_i$ are large and the rest are near zero. The **sum of squared probabilities** $\sum_i p_i^2$ measures this concentration (known as the Simpson index in ecology, or the Herfindahl index in economics):
 
-The effective rank ratio normalizes by the maximum possible rank:
+- Maximally concentrated (all energy in one mode): $\sum p_i^2 = 1$
+- Maximally spread (uniform across $n$ modes): $\sum p_i^2 = n \cdot (1/n)^2 = 1/n$
 
-$$\rho(\mathbf{W}) = \frac{\text{PR}(\mathbf{W})}{\min(m, n)} \in [0, 1]$$
+**Step 3: Invert to get an effective count.** The **participation ratio** inverts this concentration measure:
+
+$$\text{PR}(W) = \frac{1}{\sum_i p_i^2} = \frac{\left(\sum_i \sigma_i^2\right)^2}{\sum_i \sigma_i^4}$$
+
+The second form follows by substituting $p_i = \sigma_i^2 / \sum_j \sigma_j^2$ and simplifying.
+
+**Intuition.** PR answers: "if the energy distribution were uniform across some number of modes, how many modes would that be?" Equivalently, it counts the number of "effectively participating" modes.
+
+**Boundary cases:**
+- All energy in one singular value ($\sigma_1 \gg 0$, rest $\approx 0$): $\text{PR} = 1$
+- Energy uniform across $k$ modes: $\text{PR} = k$
+- Range: $1 \le \text{PR} \le n$ where $n = \min(m, n)$
+
+**Step 4: Normalize.** To compare matrices of different sizes, divide by the maximum possible rank:
+
+$$\rho(W) = \frac{\text{PR}(W)}{\min(m, n)} \in [0, 1]$$
+
+This is the **effective rank ratio** — the main metric reported throughout this experiment. A ratio of 0.25 means the matrix uses about 25% of its available dimensionality.
+
+**Connection to entropy.** PR is the exponential of twice the Renyi-2 entropy:
+
+$$\text{PR} = \exp(2 H_2), \quad \text{where } H_2 = -\log\left(\sum_i p_i^2\right)$$
+
+Renyi-2 entropy weights the dominant modes more heavily than Shannon entropy, making PR more sensitive to the "head" of the distribution (the largest singular values) than to the "tail" (the smallest ones).
 
 ### Stable Rank
 
-An alternative rank measure that is less sensitive to the tail of the spectrum:
+**Why another rank measure?** Participation ratio treats all singular values via the energy distribution $p_i$. But sometimes we want to know specifically: how dominant is the single largest singular value? If $\sigma_1$ is huge and everything else is small, that's a qualitatively different situation from energy being spread across many modes.
 
-$$\text{srank}(\mathbf{W}) = \frac{\|\mathbf{W}\|_F^2}{\|\mathbf{W}\|_2^2} = \frac{\sum_i \sigma_i^2}{\sigma_1^2}$$
+**Definition.** The stable rank compares total energy to the energy of the top mode:
+
+$$\text{srank}(W) = \frac{\|W\|_F^2}{\|W\|_2^2} = \frac{\sum_i \sigma_i^2}{\sigma_1^2}$$
+
+where $\|W\|_F$ is the Frobenius norm (total energy) and $\|W\|_2 = \sigma_1$ is the operator norm (largest singular value).
+
+**Intuition.** Stable rank answers: "how many copies of the dominant mode would it take to account for all the energy?" If $\sigma_1$ contains half the total energy, then $\text{srank} = 2$.
 
 **Properties:**
-- $\text{srank}(\mathbf{W}) \le \text{rank}(\mathbf{W})$ always (with equality iff all nonzero SVs are equal)
-- $\text{srank}(\mathbf{W}) \ge 1$ always (since $\sigma_1^2 \le \sum \sigma_i^2$)
-- More robust to small perturbations in the tail singular values than PR
-- srank measures how "spread out" the energy is relative to the dominant mode, while PR measures how spread out relative to a uniform distribution
+- Always $\ge 1$ (since $\sigma_1^2 \le \sum \sigma_i^2$)
+- Always $\le \text{rank}(W)$ (equality only if all nonzero SVs are equal)
+- More robust to tiny perturbations in the tail than PR — adding noise to the smallest SVs barely changes $\sigma_1^2$
 
-**Relationship to PR:** Both measure different aspects of spectral concentration. If the SV distribution follows a power law $\sigma_i \sim i^{-\alpha}$, then:
-- $\text{srank} = \sum i^{-2\alpha} \sim n^{1-2\alpha} / (1-2\alpha)$ for $\alpha < 1/2$
-- $\text{PR} = (\sum i^{-2\alpha})^2 / \sum i^{-4\alpha}$. For $\alpha < 1/4$: $\text{PR} \sim n \cdot (1-4\alpha)/(1-2\alpha)^2$ (linear in $n$). For $1/4 < \alpha < 1/2$: $\text{PR} \sim n^{2-4\alpha} \cdot \text{const}$ (sub-linear growth). The two measures have different scaling exponents, with stable rank always $\le$ PR for power-law spectra
+**Stable rank vs PR.** Both measure spectral concentration, but from different angles:
+- **Stable rank** asks: "how spread is the energy relative to the top mode?" — it is anchored to $\sigma_1$
+- **PR** asks: "how spread is the energy relative to a perfectly uniform distribution?" — it considers the full shape of the distribution
+
+In practice, $\text{srank} \le \text{PR}$ for typical neural network spectra, because trained matrices develop a few dominant singular values (a "spike") while the remaining energy is spread across many small modes. The spike pulls stable rank down (large denominator) while PR stays higher (the many small modes each contribute to participation).
 
 ### Spectral Entropy
 
-The Shannon entropy of the normalized squared SV distribution:
+**Why entropy?** PR (via Renyi-2) emphasizes the head of the distribution. Shannon entropy provides a complementary view that is more sensitive to the tail — it penalizes even small modes that carry a tiny fraction of energy.
 
-$$H(\mathbf{W}) = -\sum_i p_i \log(p_i)$$
+**Definition.** The Shannon entropy of the energy distribution $p_i$:
 
-Normalized by the maximum entropy $\log(n)$:
+$$H(W) = -\sum_{i=1}^{n} p_i \log(p_i)$$
 
-$$H_{\text{norm}}(\mathbf{W}) = \frac{H(\mathbf{W})}{\log(\min(m, n))} \in [0, 1]$$
+**Normalized** to $[0, 1]$ by dividing by the maximum entropy (attained when all $p_i$ are equal):
 
-**Relationship to effective rank:** The exponential of Shannon entropy defines the "perplexity" of the distribution, which is another effective rank measure:
+$$H_{\text{norm}}(W) = \frac{H(W)}{\log(n)}, \quad n = \min(m, n)$$
 
-$$\text{PR}_{\text{Shannon}} = \exp(H(\mathbf{W}))$$
+**Connection to effective rank.** Just as $\text{PR} = \exp(2 H_2)$, we can define a Shannon-entropy effective rank:
 
-This differs from the participation ratio (which uses Renyi-2 entropy). Shannon entropy is more sensitive to the tail of the distribution, while participation ratio is more sensitive to the dominant modes.
+$$\text{rank}_{\text{Shannon}} = \exp(H(W))$$
+
+This is the "perplexity" of the SV distribution. Because Shannon entropy is more sensitive to the tail than Renyi-2 entropy, $\text{rank}_{\text{Shannon}} \ge \text{PR}$ — the Shannon measure always counts more "effective" modes because it gives more credit to the small modes in the tail.
 
 ### Power-Law Fit
 
-We test whether singular values follow a Zipf-like power law:
+**Why fit a power law?** The singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n$ decay from large to small, but *how fast* they decay determines compressibility. A power law is the simplest parametric model for this decay rate.
 
-$$\sigma_i \sim i^{-\alpha} \quad \text{for } i = 1, 2, \ldots, n$$
+**Model.** We assume singular values follow a Zipf-like power law:
 
-This is fitted by log-log linear regression:
+$$\sigma_i \approx C \cdot i^{-\alpha}$$
 
-$$\log(\sigma_i) = -\alpha \log(i) + \text{const}$$
+where $C$ is a constant and $\alpha > 0$ is the **decay exponent**. Taking logarithms linearizes this:
 
-The exponent $\alpha$ controls compressibility:
-- $\alpha > 1$: Very compressible (fast decay, low effective rank)
-- $\alpha \sim 0.5\text{--}1$: Moderately compressible (typical for trained neural networks)
-- $\alpha < 0.5$: Hard to compress (slow decay, high effective rank)
-- $\alpha = 0$: Uniform SVs (incompressible, $\text{PR} = n$)
+$$\log \sigma_i = -\alpha \log i + \log C$$
 
-**Connection to random matrix theory:** For a random Gaussian matrix $\mathbf{W} \in \mathbb{R}^{m \times n}$, the singular values follow the Marchenko-Pastur distribution (not a power law). The density of squared singular values is:
+So $\alpha$ is the slope of a log-log plot of singular values vs their index. We fit this by ordinary least squares on all $n$ points $(\log i, \log \sigma_i)$ and report $\alpha$ and the fit quality $R^2$.
 
-$$\rho_{\text{MP}}(\lambda) = \frac{\sqrt{(\lambda_+ - \lambda)(\lambda - \lambda_-)}}{2\pi\gamma\lambda}$$
+**What $\alpha$ tells us:**
+- $\alpha > 1$: Fast decay — energy concentrates heavily in the top modes, very compressible
+- $\alpha \approx 0.5$--$1$: Moderate decay — typical for trained neural networks
+- $\alpha < 0.5$: Slow decay — energy is spread broadly, hard to compress
+- $\alpha = 0$: No decay — all SVs equal, maximum effective rank, incompressible
 
-where $\gamma = n/m$, $\lambda_{\pm} = (1 \pm \sqrt{\gamma})^2$. Trained networks deviate from MP by developing a few large outlier singular values (learned features) superimposed on a bulk that resembles MP. The power-law exponent quantifies how much the top modes dominate over the bulk.
+**Random matrix baseline (Marchenko-Pastur).** A key question is: how does the trained spectrum compare to what we'd see from a random (untrained) matrix? For a random Gaussian matrix $W \in \mathbb{R}^{m \times n}$ with i.i.d. $\mathcal{N}(0, 1)$ entries, the squared singular values $\lambda_i = \sigma_i^2$ follow the **Marchenko-Pastur (MP) distribution** in the large-matrix limit. The MP density is:
 
-**Fit quality (R²):** Our R² values of 0.69-0.77 indicate the power-law is a reasonable but imperfect model. The deviation comes from two sources: (1) the bulk of singular values may follow MP rather than power-law, and (2) outlier singular values distort the fit. A more sophisticated analysis would fit a "spiked covariance" model (MP bulk + discrete spikes), but the simple power-law captures the essential compressibility information.
+$$\rho_{\text{MP}}(\lambda) = \frac{\sqrt{(\lambda_+ - \lambda)(\lambda - \lambda_-)}}{2\pi \gamma \lambda}$$
+
+where $\gamma = n/m$ (aspect ratio) and the support edges are $\lambda_{\pm} = (1 \pm \sqrt{\gamma})^2$.
+
+The MP distribution is **not** a power law — it has a bounded support with a characteristic "semicircle-like" shape. What training does is create **outlier singular values** (learned features) that stick out above the MP bulk. The power-law exponent $\alpha$ quantifies how strongly these outliers dominate: larger $\alpha$ means more energy in outliers relative to the bulk.
+
+**Fit quality ($R^2 = 0.69$--$0.77$).** The moderate $R^2$ tells us the power-law is a useful approximation but not the full story. The spectrum is really a superposition: a few spiked outliers (learned features) + a bulk that resembles MP (residual random structure). A "spiked covariance" model would fit better, but the simple power-law captures the essential compressibility information we need.
 
 ### Cumulative Energy
 
-The fraction of total Frobenius energy captured by the top $r$ singular values:
+**Why cumulative energy?** The metrics above summarize the spectrum as a single number. But for practical compression decisions (choosing a LoRA rank), we need to know: "if I keep the top $r$ singular values, how much of the matrix's action do I preserve?"
+
+**Definition.** The fraction of total Frobenius energy captured by the top $r$ singular values:
 
 $$E(r) = \frac{\sum_{i=1}^{r} \sigma_i^2}{\sum_{i=1}^{n} \sigma_i^2}$$
 
-We report the rank needed to capture 50%, 90%, and 99% of energy: $r_{50}$, $r_{90}$, $r_{99}$. These directly inform LoRA rank selection:
-- $r_{50}$: Minimum rank for a crude approximation
-- $r_{90}$: Rank for a good approximation (typical LoRA target)
-- $r_{99}$: Rank for near-lossless approximation
+This is a cumulative distribution function (CDF) that rises from $E(1) = p_1$ to $E(n) = 1$. The faster it rises, the more compressible the matrix.
+
+**Energy thresholds.** We report the rank $r$ needed to capture specific fractions of total energy:
+- $r_{50}$: Rank for 50% energy — minimum for a crude approximation
+- $r_{90}$: Rank for 90% energy — typical LoRA/factorization target
+- $r_{99}$: Rank for 99% energy — near-lossless approximation
+
+These numbers directly translate to parameter budgets: a rank-$r$ factorization $W \approx AB$ with $A \in \mathbb{R}^{m \times r}$, $B \in \mathbb{R}^{r \times n}$ uses $r(m+n)$ parameters instead of $mn$, a saving whenever $r < mn/(m+n)$.
 
 ### Condition Number
 
-$$\kappa(\mathbf{W}) = \frac{\sigma_1}{\sigma_n}$$
+**Why condition number?** Even if a matrix has high effective rank (many active modes), it can be numerically fragile if the ratio between the largest and smallest singular values is extreme. A tiny perturbation to the input along the $\sigma_n$ direction gets amplified differently than one along the $\sigma_1$ direction.
 
-Measures the ratio of maximum to minimum stretching. High condition numbers indicate near-singularity, which can cause numerical instability during training/inference. For a perfectly conditioned matrix, $\kappa = 1$.
+**Definition:**
+
+$$\kappa(W) = \frac{\sigma_1}{\sigma_n}$$
+
+**Interpretation:**
+- $\kappa = 1$: Perfectly conditioned — all directions treated equally
+- $\kappa \gg 1$: Ill-conditioned — the matrix nearly annihilates some input directions while strongly amplifying others
+- $\kappa = \infty$: Singular matrix (rank-deficient)
+
+High condition numbers cause numerical instability: small floating-point errors along the $\sigma_n$ direction get amplified by $\kappa$ relative to the $\sigma_1$ direction. For bf16 inference with ~3 digits of precision, $\kappa > 1000$ means some directions are essentially lost to rounding noise.
 
 ## Methods
 
@@ -159,9 +237,9 @@ For each of the 7 weight matrices at each of the 36 layers, we compute the full 
 
 Based on the layer shuffle experiment, layers 0-16 form a "plateau" with similar weight norms, while layers 17-35 diverge. We test whether spectral structure also differs between these groups using Welch's t-test (unequal variance, two-sample t-test):
 
-$$t = \frac{\bar{x}_{\text{plateau}} - \bar{x}_{\text{late}}}{\sqrt{s_p^2 / n_p + s_l^2 / n_l}}$$
+$$t = \frac{\bar{x}_P - \bar{x}_L}{\sqrt{s_P^2 / n_P + s_L^2 / n_L}}$$
 
-where $n_p = 17$ (plateau layers), $n_l = 19$ (late layers), and the degrees of freedom are computed via the Welch-Satterthwaite equation.
+where subscripts $P$ = plateau, $L$ = late, $n_P = 17$ (plateau layers), $n_L = 19$ (late layers), and the degrees of freedom are computed via the Welch-Satterthwaite equation.
 
 ## Results
 
@@ -208,7 +286,7 @@ All matrices show moderate power-law decay ($\alpha = 0.3\text{--}0.7$) with $R^
 
 **Regime B — Flat decay (MLP + value, $\alpha \sim 0.31\text{--}0.40$):** V, gate, up, down projections have slower SV decay, spreading energy more uniformly. These matrices use more of their available capacity for richer transformations. The flatter $\alpha$ is closer to random-matrix behavior (MP distribution), suggesting these matrices have less "spiked" structure.
 
-**Connection to Marchenko-Pastur:** For a random $m \times n$ matrix $\mathbf{W}$ with i.i.d. $N(0, 1)$ entries ($m \ge n$), the expected participation ratio is $\text{PR} = mn/(m+n+1) \sim mn/(m+n)$, giving an effective rank ratio of $\text{PR}/n \sim m/(m+n) = 1/(1+\gamma)$ where $\gamma = n/m$. For our matrices:
+**Connection to Marchenko-Pastur:** For a random $m \times n$ matrix $W$ with i.i.d. $N(0, 1)$ entries ($m \ge n$), the expected participation ratio is $\text{PR} = mn/(m+n+1) \approx mn/(m+n)$, giving an effective rank ratio of $\text{PR}/n \approx m/(m+n) = 1/(1+\gamma)$ where $\gamma = n/m$. For our matrices:
 - K/V ($1024 \times 2560$): $\gamma = 1024/2560 = 0.40$ — MP predicts eff rank ratio $\sim$ **0.71**
 - Q/O ($4096 \times 2560$ or $2560 \times 4096$): $\gamma = 2560/4096 = 0.625$ — MP predicts eff rank ratio $\sim$ **0.62**
 - MLP ($9728 \times 2560$ or $2560 \times 9728$): $\gamma = 2560/9728 = 0.263$ — MP predicts eff rank ratio $\sim$ **0.79**
@@ -354,7 +432,7 @@ Uniform-rank LoRA wastes parameters on redundant plateau layers and under-fits c
 
 ### Static Factorization
 
-**3. Low-rank factorization of Q/K.** Q uses only 25% and K only 38% of effective rank — the most compressible matrices. Factoring $\mathbf{W}_q = \mathbf{A}\mathbf{B}$ with rank $r \sim 1240$ (vs 2560) captures 90% of energy; for K, $r \sim 550$ captures 90% (vs max rank 1024). This is a static SVD-based decomposition applicable directly at inference with no retraining.
+**3. Low-rank factorization of Q/K.** Q uses only 25% and K only 38% of effective rank — the most compressible matrices. Factoring $W_q = AB$ with rank $r \sim 1240$ (vs 2560) captures 90% of energy; for K, $r \sim 550$ captures 90% (vs max rank 1024). This is a static SVD-based decomposition applicable directly at inference with no retraining.
 
 **4. Multi-head pruning via Q-redundancy.** 32 query heads with only 25% effective rank means heavy redundancy. Plateau layers (Q eff rank ratio 0.23) are the best pruning targets — fewer heads with minimal impact on output quality.
 
@@ -367,7 +445,11 @@ Uniform-rank LoRA wastes parameters on redundant plateau layers and under-fits c
 ### Architectural Insights
 
 **7. Asymmetric latent attention (Tri-latent MLA).** DeepSeek-V2/V3's MLA uses a shared KV latent ($d_c = 512$). Our spectral data shows K and V have very different effective ranks (0.38 vs 0.61), motivating *separate* latent spaces sized by measured rank:
-$$c_q: d \sim 640 \;(25\%\text{ of hidden}) \qquad c_k: d \sim 970 \;(38\%) \qquad c_v: d \sim 1560 \;(61\%)$$
+| Latent | Dimension | Fraction of Hidden |
+|--------|-----------|-------------------|
+| $c_q$ | ~640 | 25% |
+| $c_k$ | ~970 | 38% |
+| $c_v$ | ~1560 | 61% |
 Depth-varying: the Q-rank jump at layer 24→25 (see Key Finding 4) motivates widening late-layer Q latent accordingly.
 
 **8. Shared-Q blocks for plateau layers.** Plateau Q eff rank ratio is just 0.23 — the lowest anywhere. Adjacent plateau layers' Q projections are largely the same linear map. Groups of 2-3 layers can share a single Q projection with per-layer low-rank residuals (rank 16-32), saving ~66% of Q parameters in plateau blocks.

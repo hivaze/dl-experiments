@@ -12,44 +12,196 @@ Specifically:
 
 ## Theoretical Framework
 
-### Residual Stream as a Trajectory in Representation Space
+### Why Do We Need This Framework?
 
-A transformer with $L$ layers maps an input token sequence to a sequence of hidden states via the residual stream. For a given token position $t$, the hidden state after layer $\ell$ is:
+Previous experiments looked at one completion at a time: T-1 asked "when does the model predict the right token?", T-4 asked "what shape does the hidden-state manifold have?" But neither can answer a comparative question: **if we feed the same prompt with two different continuations, at what depth does the model's internal state "know" they're different, and what kind of difference does it detect first — meaning or surface form?**
 
-$$h_t^{(\ell)} = h_t^{(0)} + \sum_{i=1}^{\ell} f_i(h_t^{(i-1)})$$
+To answer this, we need to:
+1. Define what it means for two completions to "diverge" inside the model (the trajectory formalism)
+2. Measure that divergence in multiple complementary ways (because no single metric captures the full picture)
+3. Connect internal divergence to testable predictions about semantic vs. surface-form processing
 
-where $h_t^{(0)}$ is the token embedding and $f_i$ is the residual update from layer $i$ (attention + MLP). Given two completions $A$ and $B$ for the same prompt, the hidden states at the **first diverging token position** $t^\ast$ (the "pivot") follow two trajectories:
+### Step 1: The Residual Stream as a Path Through Representation Space
 
-$$\text{Trajectory A:} \quad h_{t^\ast}^{(0,A)}, \; h_{t^\ast}^{(1,A)}, \; \ldots, \; h_{t^\ast}^{(L,A)}$$
-$$\text{Trajectory B:} \quad h_{t^\ast}^{(0,B)}, \; h_{t^\ast}^{(1,B)}, \; \ldots, \; h_{t^\ast}^{(L,B)}$$
+**Intuition.** A transformer doesn't transform its input all at once. Each layer makes a small additive update to a running representation called the *residual stream*. Think of it like a message being passed through 36 editors: each editor reads the current draft, writes a small correction in the margin (attention finds relevant context, MLP transforms features), and the correction gets added to the draft. After all 36 editors, the final draft is decoded into the next token.
 
-These trajectories start from different embeddings (different token IDs at position $t^\ast$) but are conditioned on the same context (identical prefix). We measure their relationship at each layer $\ell$ via:
+**Formally.** For a given token at position $t$, the hidden state after layer $\ell$ is:
 
-**Cosine similarity** (directional alignment):
-$$\text{cos}(\ell) = \frac{\langle h_{t^\ast}^{(\ell,A)}, \; h_{t^\ast}^{(\ell,B)} \rangle}{\|h_{t^\ast}^{(\ell,A)}\| \cdot \|h_{t^\ast}^{(\ell,B)}\|}$$
+$$h_t^{(\ell)} = h_t^{(0)} + \sum_{i=1}^{\ell} \Delta_i$$
 
-**Normalized L2 distance** (magnitude-sensitive divergence):
-$$d(\ell) = \frac{\|h_{t^\ast}^{(\ell,A)} - h_{t^\ast}^{(\ell,B)}\|}{\frac{1}{2}(\|h_{t^\ast}^{(\ell,A)}\| + \|h_{t^\ast}^{(\ell,B)}\|)}$$
+where:
+- $h_t^{(0)} \in \mathbb{R}^{d}$ is the token embedding (the initial draft — just looking up the token in a table, $d = 2560$ for Qwen3-4B)
+- $\Delta_i = f_i(h_t^{(i-1)})$ is the residual update from layer $i$ — the "correction" that layer $i$ writes after reading the current state $h_t^{(i-1)}$. Each $f_i$ consists of self-attention followed by a SwiGLU MLP.
+- The sum is cumulative: layer $\ell$'s output is the embedding plus all corrections from layers $1$ through $\ell$
 
-### KL Divergence as Functional Divergence
+**Why this matters.** Because updates are additive, the hidden state at each layer is a point in the same $d$-dimensional space. As we go deeper (increasing $\ell$), the hidden state traces out a *path* (trajectory) through this space — starting at the embedding, accumulating corrections, and ending at the representation that gets decoded into a token prediction. This is what we compare between two completions.
 
-Cosine similarity and L2 distance operate in hidden-state space, but two hidden states can be geometrically close yet produce very different next-token distributions, or geometrically distant yet agree on the output. KL divergence on the logit distribution captures the *functionally relevant* difference — how differently the model would act on the two representations if forced to decode at that point.
+### Step 2: Setting Up the Comparison — Two Trajectories from a Shared Origin
 
-At each layer, we project the hidden state through the final layer norm $\text{RMSNorm}$ and unembedding matrix $W_U$ to get logits:
+**The setup.** Given a prompt like *"Is the Sun a star or a planet?"*, we force-decode two completions:
+- Completion A: *"Star"*
+- Completion B: *"Planet"*
 
-$$z^{(\ell)} = W_U \cdot \text{RMSNorm}(h_{t^\ast}^{(\ell)})$$
+Both completions share the same prompt prefix, so their token sequences are identical up to some position $t^*$ — the **pivot position**, where the first differing token appears. At and after the pivot, the two sequences contain different tokens.
 
-The KL divergence $D_{\text{KL}}(p_A^{(\ell)} \| p_B^{(\ell)})$ between the resulting softmax distributions measures how distinguishable the two completions are at each layer from the model's output perspective. If antonyms (different meanings, e.g. "star" vs "planet") show higher KL than synonyms (same meaning, e.g. "fast" vs "swift") in early layers, this suggests the model resolves semantic content before surface form. If synonyms show higher KL in late layers, this suggests form-level commitment happens late. These are empirical predictions tested below.
+**The key insight.** Even though both completions pass through the same 36 layers of the same model with the same weights, the hidden states at the pivot position will differ — because the token embedded at that position is different ("Star" vs "Planet"). We get two trajectories through the same space:
 
-### Linear CKA as Representational Similarity
+$$\mathbf{a}_\ell = h_{t^*}^{(\ell, A)} \quad \text{(hidden state at the pivot, completion A, after layer } \ell\text{)}$$
 
-Cosine similarity and L2 distance are defined for individual vectors — they compare the hidden state at a single token position. But completions span multiple tokens, and the *relationship between* token positions (e.g., whether the model encodes similar relative structure across the sequence) is invisible to pointwise metrics. We need a measure that asks: "do these two completions induce the same *pattern of similarities* across their token positions?" — i.e., representational similarity rather than pointwise similarity.
+$$\mathbf{b}_\ell = h_{t^*}^{(\ell, B)} \quad \text{(hidden state at the pivot, completion B, after layer } \ell\text{)}$$
 
-We use **Linear Centered Kernel Alignment** (CKA) (Kornblith et al., 2019) because it satisfies three properties that alternatives lack: (1) **invariance to orthogonal transformations and isotropic scaling** — if two representations encode the same structure but in rotated or rescaled coordinate systems, CKA still returns 1.0, unlike naive Frobenius-norm comparisons; (2) **sensitivity to representational geometry** — unlike Procrustes distance or CCA, CKA captures whether the similarity structure (which tokens are close to which) is preserved, not just whether individual dimensions align; (3) **computational simplicity** — linear CKA reduces to a ratio of squared Frobenius norms with no eigendecomposition or iterative alignment, making it tractable for 36 layers × 111 groups.
+Both trajectories $\mathbf{a}_0, \mathbf{a}_1, \ldots, \mathbf{a}_L$ and $\mathbf{b}_0, \mathbf{b}_1, \ldots, \mathbf{b}_L$ live in $\mathbb{R}^{2560}$ and are shaped by the same context (identical prefix) but seeded with different tokens at the pivot. Our question becomes: **how does the distance between $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ evolve as $\ell$ goes from 0 to 35?**
 
-$$\text{CKA}(X, Y) = \frac{\| Y^{T} X \|_F^{2}}{\| X^{T} X \|_F \cdot \| Y^{T} Y \|_F}$$
+### Step 3: Why One Metric Isn't Enough
 
-where $X \in \mathbb{R}^{n \times d}$ and $Y \in \mathbb{R}^{n \times d}$ are the hidden-state matrices (tokens × hidden dim) for completions $A$ and $B$ respectively, after centering. CKA = 1 means the representations encode the same relational structure across token positions; CKA = 0 means the similarity patterns are unrelated. This complements the pointwise metrics: cosine similarity tells us whether individual positions align, while CKA tells us whether the completions organize information the same way across the full sequence.
+Two vectors in $\mathbb{R}^{2560}$ can differ in multiple independent ways, and no single number captures all of them. Consider three scenarios:
+
+| Scenario | Cosine similarity | L2 distance | Same next-token prediction? |
+|---|---|---|---|
+| Vectors point the same direction but have different magnitudes | High (~1.0) | Can be large | Maybe not |
+| Vectors point different directions but produce the same logit ranking | Low | Large | Yes |
+| Vectors are close in every way but one critical dimension | High | Small | Could differ completely |
+
+This is why we use **four complementary metrics**, each capturing a different aspect of divergence:
+
+| Metric | What it measures | Blind to |
+|---|---|---|
+| **Cosine similarity** | Directional alignment | Magnitude differences |
+| **Normalized L2 distance** | Overall vector distance (direction + magnitude) | Which dimensions matter for output |
+| **KL divergence** | Difference in predicted next-token distributions | Internal geometry that doesn't affect output |
+| **Linear CKA** | Structural similarity across multiple token positions | Single-position behavior |
+
+### Step 4: The Four Metrics in Detail
+
+We use shorthand throughout: $\mathbf{a}_\ell$ and $\mathbf{b}_\ell$ are the hidden states at the pivot for completions A and B after layer $\ell$, as defined in Step 2.
+
+#### 4a. Cosine Similarity — Are the Two Representations Pointing the Same Way?
+
+**Intuition.** In high-dimensional spaces, the *direction* a vector points often matters more than its length. Two representations that point in the same direction encode similar information regardless of scale. Cosine similarity isolates this directional component.
+
+**Formula.**
+
+$$\text{cos}(\ell) = \frac{\mathbf{a}_\ell \cdot \mathbf{b}_\ell}{\lVert \mathbf{a}_\ell \rVert \; \lVert \mathbf{b}_\ell \rVert}$$
+
+where $\mathbf{a}_\ell \cdot \mathbf{b}_\ell = \sum_{i=1}^{d} a_{\ell,i} \, b_{\ell,i}$ is the dot product and $\lVert \mathbf{a}_\ell \rVert = \sqrt{\sum_i a_{\ell,i}^2}$ is the Euclidean norm.
+
+- $\text{cos}(\ell) = 1$: identical directions (representations encode the same information, up to scale)
+- $\text{cos}(\ell) = 0$: orthogonal (completely unrelated)
+- $\text{cos}(\ell) < 0$: opposing directions (rare in practice for residual streams)
+
+**What to expect.** At layer 0 (embeddings), cosine similarity is low because "star" and "planet" have different embeddings. Through mid layers, context dominates and similarity rises. At the final layer, similarity drops again as the model commits to specific token predictions.
+
+#### 4b. Normalized L2 Distance — How Far Apart Are They, Accounting for Scale?
+
+**Intuition.** Cosine similarity ignores magnitude — two vectors pointing the same direction but with very different lengths get cosine = 1. But magnitude carries information in the residual stream (T-4 showed norms grow across layers). L2 distance captures the full picture: direction *and* magnitude differences combined.
+
+We normalize by the average norm so that the distance is comparable across layers (where norms can differ by 10×):
+
+**Formula.**
+
+$$d(\ell) = \frac{\lVert \mathbf{a}_\ell - \mathbf{b}_\ell \rVert}{\frac{1}{2}\bigl(\lVert \mathbf{a}_\ell \rVert + \lVert \mathbf{b}_\ell \rVert\bigr)}$$
+
+**Step by step:**
+1. Compute the difference vector: $\mathbf{a}_\ell - \mathbf{b}_\ell$ (a vector in $\mathbb{R}^{2560}$ pointing from B to A)
+2. Take its Euclidean norm: $\lVert \mathbf{a}_\ell - \mathbf{b}_\ell \rVert$ (how far apart the two points are)
+3. Divide by the mean norm of the two vectors (normalizes for the overall scale at this layer)
+
+- $d(\ell) = 0$: identical representations
+- $d(\ell) = 2$: the difference vector is as large as the vectors themselves (maximally separated for same-magnitude vectors)
+
+**Relationship to cosine.** For unit vectors, $\lVert \mathbf{a} - \mathbf{b} \rVert^2 = 2(1 - \cos(\mathbf{a}, \mathbf{b}))$, so L2 and cosine are two views of the same geometry. But for non-unit vectors (which is always the case in practice), they diverge — a pair can have high cosine but high L2 if one vector is much longer than the other.
+
+#### 4c. KL Divergence — Do They Predict Different Next Tokens?
+
+**Intuition.** The previous two metrics measure geometric distance in hidden-state space, but the model doesn't "care" about geometry per se — it cares about what token to predict next. Two hidden states could be geometrically close but produce very different next-token distributions (if they sit near a decision boundary in logit space), or geometrically far apart but agree on the output (if the difference lies in dimensions the unembedding matrix ignores).
+
+KL divergence answers the *functional* question: **if we forced the model to decode at this intermediate layer, how differently would it behave for the two completions?**
+
+**How it works — the logit lens trick.** Normally only the final layer's hidden state gets decoded into a token. But we can apply the final-layer decoding machinery (RMSNorm + unembedding matrix) to *any* intermediate layer's hidden state to get a "premature" next-token distribution. This is the logit lens from T-1.
+
+**Formula, step by step:**
+
+**Step 1.** Take the hidden state at layer $\ell$ and apply RMSNorm (the model's final normalization):
+
+$$\hat{\mathbf{a}}_\ell = \text{RMSNorm}(\mathbf{a}_\ell)$$
+
+RMSNorm normalizes by the root-mean-square of the vector's components: $\hat{a}_i = \frac{a_i}{\text{RMS}(\mathbf{a})} \cdot \gamma_i$ where $\text{RMS}(\mathbf{a}) = \sqrt{\frac{1}{d}\sum_j a_j^2}$ and $\gamma$ is a learned scale. This puts the representation on a consistent scale for the unembedding.
+
+**Step 2.** Multiply by the unembedding matrix $W_U \in \mathbb{R}^{V \times d}$ (where $V$ is the vocabulary size) to get logits — one score per vocabulary token:
+
+$$\mathbf{z}_\ell^A = W_U \, \hat{\mathbf{a}}_\ell \in \mathbb{R}^{V}$$
+
+**Step 3.** Apply softmax to convert logits into a probability distribution over the vocabulary:
+
+$$p_A^{(\ell)}(i) = \frac{\exp(z_{\ell,i}^A)}{\sum_{j=1}^{V} \exp(z_{\ell,j}^A)}$$
+
+Do the same for completion B to get $p_B^{(\ell)}$.
+
+**Step 4.** Compute KL divergence — how many extra bits of information you need if you use distribution A to encode samples from distribution B:
+
+$$D_{\text{KL}}\!\bigl(p_B^{(\ell)} \,\|\, p_A^{(\ell)}\bigr) = \sum_{i=1}^{V} p_B^{(\ell)}(i) \;\log \frac{p_B^{(\ell)}(i)}{p_A^{(\ell)}(i)}$$
+
+- $D_{\text{KL}} = 0$: both completions produce identical next-token distributions at this layer (functionally indistinguishable)
+- $D_{\text{KL}} \gg 0$: the distributions are very different (the model would predict very different tokens)
+
+**Why KL and not something simpler?** We could just compare the top-1 predicted token, but that's too coarse — it's a binary signal (same or different). KL captures the full distributional difference: even if both distributions agree on the top token, KL detects differences in the probability mass over the rest of the vocabulary, which reveals how "confident" the model is about the distinction.
+
+**The key prediction.** If the model processes *meaning* before *surface form*, then:
+- **Early layers**: antonym pairs ("star" vs "planet" — different meanings) should have *higher* KL than synonym pairs ("fast" vs "swift" — same meaning), because the model already distinguishes different meanings
+- **Late layers**: synonym pairs should have *higher* KL than antonym pairs, because now the model is committing to specific surface tokens and "fast" vs "swift" are maximally different surface forms despite identical meaning
+
+#### 4d. Linear CKA — Do the Two Completions Organize Information the Same Way?
+
+**Intuition.** All three metrics above compare hidden states at a *single* token position (the pivot). But a completion is a *sequence* of tokens. Two completions might organize information similarly across their token positions — e.g., if position 3 is similar to position 5 in completion A, is the same true in completion B? This structural pattern is invisible to pointwise metrics.
+
+**The question CKA answers.** Think of it this way: for each completion at a given layer, we have a matrix of hidden states — one row per token position. CKA asks: "do these two matrices have the same internal similarity structure?" That is, do the two completions encode a similar pattern of which-tokens-are-close-to-which, regardless of the specific coordinate system?
+
+**Why not just compare the matrices directly?** A naive approach would be to compute the Frobenius norm $\lVert X - Y \rVert_F$. But this fails if the two representations encode the same structure in different coordinate systems (e.g., rotated or scaled). CKA is invariant to orthogonal transformations and isotropic scaling — if A and B encode the same relational structure but in rotated coordinates, CKA still returns 1.0.
+
+**Formula, step by step.**
+
+Let $X, Y \in \mathbb{R}^{n \times d}$ be the hidden-state matrices for completions A and B at a given layer, where $n$ is the number of (completion) tokens and $d = 2560$ is the hidden dimension.
+
+**Step 1. Center the matrices** (subtract the mean token representation):
+
+$$\bar{X} = X - \frac{1}{n}\mathbf{1}\mathbf{1}^T X, \qquad \bar{Y} = Y - \frac{1}{n}\mathbf{1}\mathbf{1}^T Y$$
+
+Centering removes the "average position" so we only compare *relative* structure (how tokens differ from each other), not absolute position in the space.
+
+**Step 2. Compute the Gram matrices** (token-by-token similarity within each completion):
+
+$$K = \bar{X}\bar{X}^T \in \mathbb{R}^{n \times n}, \qquad L = \bar{Y}\bar{Y}^T \in \mathbb{R}^{n \times n}$$
+
+$K_{ij}$ tells you how similar token $i$ and token $j$ are within completion A. $L_{ij}$ does the same for completion B. These Gram matrices encode the *internal similarity structure* of each completion.
+
+**Step 3. Compare the Gram matrices** using the Hilbert-Schmidt Independence Criterion (HSIC):
+
+$$\text{HSIC}(K, L) = \sum_{i,j} K_{ij} \, L_{ij}$$
+
+This is just the element-wise dot product of the two Gram matrices. If token pairs that are similar in A are also similar in B, this sum is large. This can also be written as $\lVert \bar{Y}^T \bar{X} \rVert_F^2$ (squared Frobenius norm of the cross-covariance matrix).
+
+**Step 4. Normalize** to get a value in $[0, 1]$:
+
+$$\text{CKA}(\bar{X}, \bar{Y}) = \frac{\text{HSIC}(K, L)}{\sqrt{\text{HSIC}(K, K) \cdot \text{HSIC}(L, L)}} = \frac{\lVert \bar{Y}^T \bar{X} \rVert_F^2}{\lVert \bar{X}^T \bar{X} \rVert_F \cdot \lVert \bar{Y}^T \bar{Y} \rVert_F}$$
+
+- CKA = 1: the two completions induce identical similarity structure across token positions (same "representational geometry")
+- CKA = 0: the similarity patterns are completely unrelated
+
+**Complements the pointwise metrics.** Cosine similarity tells us if individual positions align; CKA tells us if the completions organize information the same way across the full sequence.
+
+### Step 5: From Metrics to Testable Hypotheses
+
+The four metrics combine to test the **meaning-before-form hypothesis** — the idea that a transformer resolves *what* to say (semantics) before *how* to say it (surface token choice):
+
+| Hypothesis | Predicted signature | Which metric tests it |
+|---|---|---|
+| Meaning is resolved early | Antonym KL > Synonym KL in layers 0–5 | KL divergence |
+| Form is committed late | Synonym KL > Antonym KL in layers 25–35 | KL divergence |
+| Context dominates token identity | Cosine similarity > 0.6 for shared-prefix pairs across most layers | Cosine similarity |
+| Final layer is a universal discriminator | All types drop in cosine at layer 35 | Cosine similarity |
+| Synonyms maintain structural similarity longer | Synonym CKA > Antonym CKA in mid layers | Linear CKA |
+
+The **prefix-controlled design** (Step 2 of Setup) is critical: without matching prefix structure between antonym and synonym pairs, any KL difference could be an artifact of different prefix lengths rather than a genuine semantic effect.
 
 ## Setup
 

@@ -23,82 +23,265 @@ This connects to the Layer Shuffle Recovery experiment (on Qwen3-1.7B) — if ac
 
 ## Mathematical Framework
 
-### Participation Ratio as Effective Dimensionality
+This section develops the metrics we use to characterize the geometry of the residual stream. Each metric answers a specific question about what happens to representations as they flow through layers. We build up from basic linear algebra, explaining *why* each metric is needed and *how* it captures the phenomenon we care about.
 
-Given a set of $N$ token representations $\lbrace\mathbf{h}_1, \ldots, \mathbf{h}_N\rbrace \subset \mathbb{R}^d$, form the mean-centered data matrix $\mathbf{H} \in \mathbb{R}^{N \times d}$ with rows $\mathbf{h}_i - \bar{\mathbf{h}}$. The SVD gives singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$ where $r = \min(N, d)$. Define the normalized energy distribution:
+### 1. Participation Ratio as Effective Dimensionality
+
+#### The problem: what does "dimensionality" mean for representations?
+
+Every hidden state lives in $\mathbb{R}^{2560}$, so technically they're all 2560-dimensional. But that tells us nothing — the representations might use only a tiny subspace. The question is: **how many directions actually matter?**
+
+A naive answer is "count the nonzero singular values" (i.e., the matrix rank). But in practice all singular values are nonzero due to floating-point noise — the rank is always $\min(N, d)$. We need a *soft* measure that distinguishes "10 important directions + 2550 negligible ones" from "200 equally important directions."
+
+#### Setup and SVD
+
+Start with $N$ token representations $\lbrace \mathbf{h}_1, \ldots, \mathbf{h}_N \rbrace \subset \mathbb{R}^d$. In our experiment, $N = 4{,}094$ (completion tokens) and $d = 2{,}560$ (hidden dimension).
+
+**Step 1: Mean-center.** Compute the centroid $\bar{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$ and subtract it. This removes the shared offset so we measure the *spread* of representations, not their location. Form the centered data matrix:
+
+$$\mathbf{H} \in \mathbb{R}^{N \times d}, \quad \text{row } i = \mathbf{h}_i - \bar{\mathbf{h}}$$
+
+**Step 2: Compute SVD.** The SVD factorizes $\mathbf{H} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^\top$, where $\boldsymbol{\Sigma}$ contains singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_r \ge 0$ with $r = \min(N, d)$. Each singular value tells us how much variance the data has along the corresponding direction $\mathbf{v}_i$ (column of $\mathbf{V}$). Specifically, $\sigma_i^2$ is proportional to the variance explained by direction $i$.
+
+**Step 3: Normalize to a probability distribution.** The total variance is $\sum_i \sigma_i^2$. Define the fraction of variance in each direction:
 
 $$p_i = \frac{\sigma_i^2}{\sum_{j=1}^{r} \sigma_j^2}$$
 
-The **participation ratio** (inverse Simpson index of the energy distribution) is:
+Now $p_i \ge 0$ and $\sum_i p_i = 1$ — this is a probability distribution over directions, weighted by how much variance each captures.
 
-$$\text{PR} = \frac{\left(\sum_i \sigma_i^2\right)^2}{\sum_i \sigma_i^4} = \frac{1}{\sum_i p_i^2}$$
+#### The participation ratio formula
 
-**Properties:**
-- $\text{PR} = 1$ when all variance concentrates in a single direction ($p_1 = 1$)
-- $\text{PR} = k$ when variance is uniformly distributed across exactly $k$ directions
-- $\text{PR} = r$ when all singular values are equal (maximally isotropic)
-- $\text{PR} = \exp(H_2)$ where $H_2 = -\ln\sum_i p_i^2$ is the Rényi entropy of order 2
+We want a single number that counts "how many directions participate." The **participation ratio** (PR) is the inverse of the sum of squared probabilities:
 
-The PR is more robust than rank (which is sensitive to numerical thresholds) and more interpretable than spectral entropy (which is unbounded). It directly answers: "how many orthogonal directions carry meaningful variance?"
+$$\text{PR} = \frac{1}{\sum_i p_i^2}$$
 
-### Isotropy via Cosine Similarity
+Equivalently, substituting the definition of $p_i$:
 
-For a set of vectors $\lbrace\mathbf{h}_i\rbrace$, the **mean pairwise cosine similarity** is:
+$$\text{PR} = \frac{\left(\sum_i \sigma_i^2\right)^2}{\sum_i \sigma_i^4}$$
 
-$$\bar{c} = \mathbb{E}_{i \ne j}\left[\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\|\mathbf{h}_i\| \cdot \|\mathbf{h}_j\|}\right]$$
+#### Why this formula works — building intuition
 
-For vectors drawn uniformly on $S^{d-1}$ (the unit sphere in $\mathbb{R}^d$), $\mathbb{E}[\bar{c}] = 0$ and $\text{Var}[\bar{c}] = \mathcal{O}(1/d)$. Any significant deviation from zero indicates anisotropy — the representations cluster in a sub-region of the sphere.
+The key insight is that $\sum_i p_i^2$ measures *concentration*. Consider two extremes:
 
-**Decomposition into mean-direction and intrinsic components.** Write $\mathbf{h}_i = \bar{\mathbf{h}} + \tilde{\mathbf{h}}_i$ where $\bar{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$ is the centroid (so $\sum_i \tilde{\mathbf{h}}_i = \mathbf{0}$). The inner product decomposes as:
+**All variance in one direction:** $p_1 = 1$, all others zero. Then $\sum p_i^2 = 1$, so $\text{PR} = 1/1 = 1$. The representations are effectively one-dimensional.
 
-$$\langle \mathbf{h}_i, \mathbf{h}_j \rangle = \|\bar{\mathbf{h}}\|^2 + \langle \bar{\mathbf{h}},\, \tilde{\mathbf{h}}_i + \tilde{\mathbf{h}}_j \rangle + \langle \tilde{\mathbf{h}}_i, \tilde{\mathbf{h}}_j \rangle$$
+**Variance spread equally across $k$ directions:** $p_1 = \cdots = p_k = 1/k$, rest zero. Then $\sum p_i^2 = k \cdot (1/k)^2 = 1/k$, so $\text{PR} = k$. This directly counts the number of active dimensions.
 
-When $\|\bar{\mathbf{h}}\| \gg \|\tilde{\mathbf{h}}_i\|$ for typical $i$, the first term dominates and:
+**Smoothly decaying spectrum:** If $p_i$ decays gradually (say, exponentially), PR gives a number between 1 and $r$ that reflects the "effective" number of directions — directions with tiny $p_i$ contribute $p_i^2 \approx 0$ and don't inflate the count.
 
-$$\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\|\mathbf{h}_i\|\|\mathbf{h}_j\|} \approx \frac{\|\bar{\mathbf{h}}\|^2}{\|\bar{\mathbf{h}}\|^2 + \mathbb{E}[\|\tilde{\mathbf{h}}\|^2]} \to 1$$
+This is exactly the **inverse Simpson index** from ecology (where it counts effective species). In information theory, it equals $\exp(H_2)$ where $H_2 = -\ln \sum_i p_i^2$ is the Rényi entropy of order 2.
 
-Computing $\bar{c}$ on the centered vectors $\tilde{\mathbf{h}}_i$ isolates the **intrinsic** anisotropy — any structure that remains after removing the shared mean direction.
+#### Why PR over alternatives
 
-### Spectral Flatness
+| Metric | Problem |
+|--------|---------|
+| **Rank** (count of nonzero $\sigma_i$) | Always equals $\min(N, d)$ due to floating-point noise. Need an arbitrary threshold to make it useful. |
+| **Shannon entropy** $-\sum p_i \ln p_i$ | Unbounded (grows as $\ln r$), hard to interpret as "number of dimensions." Also more sensitive to the tail of tiny eigenvalues. |
+| **Top-$k$ variance explained** | Requires choosing $k$; different $k$ values tell different stories. |
+| **PR** | Bounded in $[1, r]$, directly interpretable as an effective count, insensitive to near-zero eigenvalues ($p_i^2 \approx 0$). |
 
-The **spectral flatness** of the covariance eigenvalue spectrum $\lbrace\lambda_i\rbrace_{i=1}^{m}$ (where $m$ is the number of positive eigenvalues, with $\lambda_i = \sigma_i^2 / (N-1)$) is the ratio of geometric to arithmetic mean:
+PR directly answers: "if I approximated this spectrum by a uniform distribution over $k$ directions, what $k$ would match?"
 
-$$\text{SF} = \frac{\left(\prod_{i=1}^{m} \lambda_i\right)^{1/m}}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i} = \frac{\exp\left(\frac{1}{m}\sum_{i=1}^{m} \ln \lambda_i\right)}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i}$$
+### 2. Isotropy via Cosine Similarity
 
-By the AM-GM inequality, $\text{SF} \in (0, 1]$, with equality to 1 iff all eigenvalues are equal (perfectly isotropic). A value near 0 indicates a "spiked" spectrum dominated by a few large eigenvalues.
+#### The problem: are representations spread out or clustered?
 
-**Relationship to PR.** Both PR and SF measure spectral concentration, but differently. PR counts how many directions carry meaningful variance (an effective count), while SF measures how uniformly the variance is spread (a shape statistic). Two distributions with the same PR can have different SF if their energy distributions have different shapes — e.g., a flat-then-zero spectrum and a smoothly decaying spectrum can yield the same PR but different SF.
+Dimensionality (PR) tells us how many directions the representations *span*, but not how they're *distributed* within that span. A cloud of points could have high PR (many active dimensions) yet still cluster in one corner of the space. We need a complementary measure of whether representations fill the space uniformly (**isotropic**) or clump together (**anisotropic**).
 
-### Cluster Separation
+#### Cosine similarity as a geometric probe
 
-For tokens partitioned into $C$ categories, define:
+The simplest test: pick two random representations and measure the angle between them. If vectors are spread uniformly over all directions, random pairs should be roughly orthogonal (cosine $\approx 0$ in high dimensions). If they cluster in a cone, random pairs will have high positive cosine.
 
-$$\bar{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \mathbb{E}_{i,j \in c,\, i \ne j}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right], \qquad \bar{c}_{\text{inter}} = \mathbb{E}_{i \in c_1,\, j \in c_2,\, c_1 \ne c_2}\left[\cos(\mathbf{h}_i, \mathbf{h}_j)\right]$$
+For a set of vectors $\lbrace \mathbf{h}_i \rbrace$, the **mean pairwise cosine similarity** is:
 
-The **cluster separation ratio** is:
+$$\bar{c} = \frac{1}{|\mathcal{P}|} \sum_{(i,j) \in \mathcal{P}} \frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \cdot \lVert \mathbf{h}_j \rVert}$$
+
+where $\mathcal{P}$ is the set of sampled distinct pairs (we sample 5,000 pairs rather than computing all $\binom{N}{2}$).
+
+**Baseline for random vectors:** For vectors drawn uniformly on the unit sphere $S^{d-1}$ in $\mathbb{R}^d$, the expected cosine between any two is exactly 0, with variance $\mathcal{O}(1/d)$. In $d = 2{,}560$, random vectors have cosine $\approx 0 \pm 0.02$. So $\bar{c} \gg 0$ is a clear signal of anisotropy.
+
+#### Decomposing anisotropy: is it "real" or just a shared mean?
+
+A high $\bar{c}$ could arise from two very different situations:
+
+1. **Mean-direction anisotropy:** All vectors have a large shared component (like a DC offset). They point in roughly the same direction not because of interesting structure, but because they all contain the same bias term.
+2. **Intrinsic anisotropy:** Even after removing the shared component, vectors cluster in a low-dimensional subspace — there's genuine geometric structure.
+
+To disentangle these, decompose each vector into its shared and unique parts:
+
+$$\mathbf{h}_i = \underbrace{\bar{\mathbf{h}}}_{\text{shared mean}} + \underbrace{\tilde{\mathbf{h}}_i}_{\text{deviation from mean}}$$
+
+where $\bar{\mathbf{h}} = \frac{1}{N}\sum_i \mathbf{h}_i$. By construction, $\sum_i \tilde{\mathbf{h}}_i = \mathbf{0}$.
+
+Now expand the inner product between any two vectors:
+
+$$\langle \mathbf{h}_i, \mathbf{h}_j \rangle = \langle \bar{\mathbf{h}} + \tilde{\mathbf{h}}_i,\ \bar{\mathbf{h}} + \tilde{\mathbf{h}}_j \rangle$$
+
+$$= \underbrace{\lVert \bar{\mathbf{h}} \rVert^2}_{\text{(A) shared component}} + \underbrace{\langle \bar{\mathbf{h}},\, \tilde{\mathbf{h}}_i \rangle + \langle \bar{\mathbf{h}},\, \tilde{\mathbf{h}}_j \rangle}_{\text{(B) cross terms}} + \underbrace{\langle \tilde{\mathbf{h}}_i,\, \tilde{\mathbf{h}}_j \rangle}_{\text{(C) intrinsic similarity}}$$
+
+**When the mean dominates** ($\lVert \bar{\mathbf{h}} \rVert \gg \lVert \tilde{\mathbf{h}}_i \rVert$ for typical $i$): Term (A) dominates. The norms are $\lVert \mathbf{h}_i \rVert \approx \lVert \bar{\mathbf{h}} \rVert$. So:
+
+$$\frac{\langle \mathbf{h}_i, \mathbf{h}_j \rangle}{\lVert \mathbf{h}_i \rVert \lVert \mathbf{h}_j \rVert} \approx \frac{\lVert \bar{\mathbf{h}} \rVert^2}{\lVert \bar{\mathbf{h}} \rVert^2} = 1$$
+
+All vectors look similar — but only because they share the same large mean direction, not because of intrinsic clustering.
+
+**The diagnostic:** Compute $\bar{c}$ on the centered vectors $\tilde{\mathbf{h}}_i = \mathbf{h}_i - \bar{\mathbf{h}}$. This removes term (A) entirely, isolating the intrinsic anisotropy (C). If centered cosine $\approx 0$, all observed anisotropy was due to the shared mean. If centered cosine $\gg 0$, there's genuine geometric clustering beyond the mean direction.
+
+### 3. Spectral Flatness
+
+#### The problem: PR counts dimensions, but what about the *shape* of the spectrum?
+
+PR tells us "about 50 directions matter," but not *how* the variance is distributed among those 50. Two very different spectra can yield the same PR:
+
+- **Flat-then-zero:** 50 equal eigenvalues, then zeros. PR = 50.
+- **Smooth decay:** Eigenvalues decay as $1/i$, with enough of them that PR happens to equal 50. But the first few directions carry much more variance than the last.
+
+We want a metric that distinguishes "flat spectrum" from "peaked spectrum" — i.e., how *uniform* is the variance distribution?
+
+#### Definition
+
+Given the covariance eigenvalues $\lbrace \lambda_i \rbrace_{i=1}^{m}$ (where $m$ is the count of positive eigenvalues, and $\lambda_i = \sigma_i^2 / (N-1)$ converts singular values to covariance eigenvalues), the **spectral flatness** is:
+
+$$\text{SF} = \frac{\text{geometric mean of } \lambda_i}{\text{arithmetic mean of } \lambda_i} = \frac{\left(\prod_{i=1}^{m} \lambda_i\right)^{1/m}}{\frac{1}{m}\sum_{i=1}^{m} \lambda_i}$$
+
+The geometric mean can be computed in log-space to avoid numerical overflow:
+
+$$\text{geometric mean} = \exp\left(\frac{1}{m}\sum_{i=1}^{m} \ln \lambda_i\right)$$
+
+#### Why geometric-mean / arithmetic-mean works
+
+The AM-GM inequality guarantees that the arithmetic mean is always $\ge$ the geometric mean, with equality only when all values are identical. Therefore $\text{SF} \in (0, 1]$:
+
+- **SF = 1:** All eigenvalues equal — the spectrum is perfectly flat, variance is uniform across all directions (maximally isotropic).
+- **SF → 0:** One eigenvalue dominates — the spectrum is "spiked," almost all variance sits on a single axis.
+
+The geometric mean is highly sensitive to small values (one tiny eigenvalue drags it down), while the arithmetic mean is dominated by large values. So their ratio captures how "spread out" vs "peaked" the spectrum is.
+
+#### Why both PR and SF?
+
+| Metric | What it measures | Analogy |
+|--------|-----------------|---------|
+| **PR** | Effective *count* of active dimensions | "How many people are at the party?" |
+| **SF** | How *evenly* variance is distributed among active dimensions | "Is the conversation spread evenly, or do 2 people dominate?" |
+
+They give complementary views. In our experiment, both track the same gross trends (collapse regions have low PR *and* low SF), but they can diverge in interesting ways — e.g., a smoothly decaying spectrum where many small eigenvalues contribute to PR but SF stays low because the top eigenvalues are much larger.
+
+### 4. Cluster Separation
+
+#### The problem: do representations organize by semantic category?
+
+The metrics above treat all tokens as one undifferentiated cloud. But our tokens come from 7 semantic categories (factual, reasoning, code, etc.). We want to know: **does the geometry reflect this semantic structure?** Do "code tokens" cluster together and separate from "reasoning tokens"?
+
+#### Intra- vs inter-category similarity
+
+Partition tokens into $C$ categories. For each, measure how similar tokens are *within* and *between* categories:
+
+$$\bar{c}_{\text{intra}} = \frac{1}{C} \sum_{c=1}^{C} \left(\text{mean cosine between pairs within category } c\right)$$
+
+$$\bar{c}_{\text{inter}} = \text{mean cosine between pairs from different categories}$$
+
+If $\bar{c}_{\text{intra}} > \bar{c}_{\text{inter}}$, tokens within a category are more similar to each other than to outsiders — the category has geometric coherence.
+
+#### The separation ratio
+
+The raw difference $\bar{c}_{\text{intra}} - \bar{c}_{\text{inter}}$ is hard to interpret in isolation (is 0.05 a lot?). We normalize by the inter-category baseline:
 
 $$S = \frac{\bar{c}_{\text{intra}} - \bar{c}_{\text{inter}}}{|\bar{c}_{\text{inter}}| + \epsilon}$$
 
-where $\epsilon = 10^{-10}$ prevents division by zero when inter-category similarity vanishes. $S > 0$ means tokens within a category are more similar to each other than to tokens in other categories. Note that $S$ is sensitive to the overall anisotropy level — in highly anisotropic layers where all cosines are large, $S$ can be small despite meaningful category structure (because both intra and inter are large).
+where $\epsilon = 10^{-10}$ prevents division by zero. $S > 0$ means categories are distinguishable; larger $S$ means stronger separation.
 
-### Layer Impact Metrics
+#### Important caveat: anisotropy masks separation
 
-Each transformer layer $\ell$ adds an update to the residual stream: $\mathbf{h}^{(\ell)} = \mathbf{h}^{(\ell-1)} + f_\ell(\mathbf{h}^{(\ell-1)})$, where $\boldsymbol{\delta}_\ell = f_\ell(\mathbf{h}^{(\ell-1)})$ is the layer's update. We measure four properties of this update:
+In highly anisotropic layers, *all* cosine similarities are large (e.g., intra = 0.64, inter = 0.61). The absolute difference is 0.03 and $S$ is small, even though the categories might be geometrically organized. The problem is that the shared mean direction inflates both intra and inter equally. This is why our results show separation *dropping* in late layers (29–34) where anisotropy peaks, then *jumping* at layer 35 where the dispersal breaks the anisotropy and lets category structure become visible.
 
-- **Update magnitude**: $\|\boldsymbol{\delta}_\ell\|$ — how much the layer changes the residual stream in absolute terms
-- **Directional preservation**: $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(\ell-1)})$ — does the output point in roughly the same direction as the input? Values near 1 mean the layer makes a small angular perturbation; values near 0 mean a large redirect
-- **Relative update size**: $\|\boldsymbol{\delta}_\ell\| / \|\mathbf{h}^{(\ell)}\|$ — the update magnitude relative to the resulting representation. Values $< 1$ mean the residual dominates; values $> 1$ mean the update overwhelms the residual
-- **Update-residual alignment**: $\cos(\boldsymbol{\delta}_\ell, \mathbf{h}^{(\ell-1)})$ — is the update aligned with (+), orthogonal to (0), or opposing (-) the existing residual? Positive alignment reinforces the current direction (growing norms); negative alignment redirects or disperses
+### 5. Layer Impact Metrics
 
-### Residual Persistence
+#### The core model: residual stream as accumulated sum
 
-To quantify how signals persist across depth, we track:
+The transformer's key architectural feature is the **residual connection**: each layer adds its output to its input rather than replacing it. Concretely, layer $\ell$ computes:
 
-- **Embedding persistence**: $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(\text{emb})})$ — how much of the original embedding direction survives at layer $\ell$
-- **Final alignment**: $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(L)})$ — how aligned each layer's output is with the final representation
-- **Update survival**: $\cos(\boldsymbol{\delta}_\ell, \mathbf{h}^{(L)})$ — does layer $\ell$'s update point toward the final output?
-- **Cumulative drift**: $\cos(\mathbf{h}^{(\ell)}, \mathbf{h}^{(\ell-k)})$ for gap sizes $k$ — how rapidly the representation direction changes over multiple layers
-- **Residual decomposition**: Since $\mathbf{h}^{(L)} = \mathbf{h}^{(\text{emb})} + \sum_{\ell=0}^{L-1} \boldsymbol{\delta}_\ell$, we project each $\boldsymbol{\delta}_\ell$ onto $\hat{\mathbf{h}}^{(L)}$ (the unit vector in the final direction) to measure each layer's signed contribution to the final representation
+$$\mathbf{h}^{(\ell)} = \mathbf{h}^{(\ell-1)} + f_\ell\left(\mathbf{h}^{(\ell-1)}\right)$$
+
+where $f_\ell$ is the layer's transformation (attention + MLP + normalizations) and $\boldsymbol{\delta}_\ell = f_\ell(\mathbf{h}^{(\ell-1)})$ is its **update vector**. The residual stream at layer $\ell$ is the sum of the embedding plus all updates so far:
+
+$$\mathbf{h}^{(\ell)} = \mathbf{h}^{(\text{emb})} + \sum_{i=0}^{\ell} \boldsymbol{\delta}_i$$
+
+This means each layer's contribution is *additive* — it doesn't overwrite what came before, it adds to it. Understanding the geometry of the residual stream requires understanding how each update $\boldsymbol{\delta}_\ell$ interacts with the accumulated sum.
+
+#### Why we need four metrics
+
+A single number (like $\lVert \boldsymbol{\delta}_\ell \rVert$) can't capture the full picture. An update can be large but aligned with the residual (just making it longer), large but orthogonal (adding a new direction), or large but opposing (partially canceling what's there). We need to measure both *magnitude* and *direction* of the update relative to the existing stream:
+
+**Metric 1 — Update magnitude:** $\lVert \boldsymbol{\delta}_\ell \rVert$
+
+The absolute size of the layer's contribution. Answers: "how much does this layer change the residual stream in raw terms?"
+
+**Metric 2 — Directional preservation:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(\ell-1)})$
+
+The cosine between the layer's output and input. Answers: "does the representation still point in roughly the same direction after this layer?" Values near 1 mean a small angular perturbation (the update is a minor correction). Values near 0 mean a major redirect.
+
+To see why this differs from update magnitude: a tiny update on a huge residual gives high preservation (cos $\approx$ 1) even though some change occurred. A moderate update that's orthogonal to a small residual gives low preservation (cos $\ll$ 1) even though the update isn't especially large.
+
+**Metric 3 — Relative update size:** $\lVert \boldsymbol{\delta}_\ell \rVert / \lVert \mathbf{h}^{(\ell)} \rVert$
+
+The update magnitude normalized by the output magnitude. Answers: "does the residual dominate, or does this layer's update overwhelm what was already there?"
+
+- Ratio $< 1$: the accumulated residual is larger than this layer's single contribution (typical — most layers add incrementally)
+- Ratio $> 1$: this layer's update is *larger* than the result, which is possible only if the update partially cancels the residual (output = residual + update, and if update opposes residual, the output can be smaller than the update)
+
+**Metric 4 — Update-residual alignment:** $\cos(\boldsymbol{\delta}_\ell,\, \mathbf{h}^{(\ell-1)})$
+
+The cosine between the update and the *existing* residual (before the update is added). This is the most revealing metric — it tells us the *geometric role* of the update:
+
+- **Positive** ($\cos > 0$): the update reinforces the current direction. The residual gets longer in the direction it was already pointing. This grows norms and increases anisotropy.
+- **Zero** ($\cos \approx 0$): the update is orthogonal — it adds a new direction without affecting the existing signal. This increases dimensionality.
+- **Negative** ($\cos < 0$): the update *opposes* the residual. It partially cancels the dominant direction, dispersing the representation. This can *shrink* norms and reduce anisotropy.
+
+Together, these four metrics let us characterize each layer's geometric role: "layer 34 makes a moderate, well-aligned update that reinforces the residual" vs "layer 35 makes a massive, opposing update that disperses it."
+
+### 6. Residual Persistence and Decomposition
+
+#### The problem: where does the final representation come from?
+
+The residual stream is a running sum. By the last layer, the representation $\mathbf{h}^{(L)}$ contains contributions from all 36 layers plus the embedding. But which layers actually matter? Maybe the early layers build intermediate structure that gets overwritten. Maybe one layer dominates the final output. We need to trace contributions through depth.
+
+#### Persistence metrics
+
+**Embedding persistence:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(\text{emb})})$
+
+How much of the original embedding direction survives at layer $\ell$. If this drops to zero quickly, the embedding's directional content is erased — later layers build entirely new directions.
+
+**Final alignment:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(L)})$
+
+How aligned each intermediate layer's output is with the final representation. A monotonic increase means the network gradually converges toward its output direction. A sudden jump would mean one layer is responsible for most of the final direction.
+
+**Update survival:** $\cos(\boldsymbol{\delta}_\ell,\, \mathbf{h}^{(L)})$
+
+Does layer $\ell$'s update point *toward* the eventual output? If $\cos \approx 0$, that layer's update is orthogonal to the final direction — it built intermediate structure that doesn't directly appear in the output. If $\cos > 0$, the update contributed constructively to the final direction.
+
+**Cumulative drift:** $\cos(\mathbf{h}^{(\ell)},\, \mathbf{h}^{(\ell-k)})$ for gap sizes $k \in \lbrace 1, 2, 4, 8, 16 \rbrace$
+
+How rapidly the representation rotates over spans of $k$ layers. Drift over 1 layer is captured by directional preservation; drift over 16 layers reveals whether the network slowly drifts or makes abrupt turns.
+
+#### Residual decomposition: quantifying each layer's contribution
+
+Since the residual stream is a literal sum:
+
+$$\mathbf{h}^{(L)} = \mathbf{h}^{(\text{emb})} + \boldsymbol{\delta}_0 + \boldsymbol{\delta}_1 + \cdots + \boldsymbol{\delta}_{L-1}$$
+
+we can ask: **how much of the final representation's magnitude comes from each term?** Project each update onto the final direction $\hat{\mathbf{h}}^{(L)} = \mathbf{h}^{(L)} / \lVert \mathbf{h}^{(L)} \rVert$:
+
+$$\text{signed projection of layer } \ell = \langle \boldsymbol{\delta}_\ell,\, \hat{\mathbf{h}}^{(L)} \rangle$$
+
+This is the scalar length of $\boldsymbol{\delta}_\ell$ projected onto the final direction. Positive means the update contributes constructively; negative means it opposes. By the linearity of inner products, these projections sum to the total:
+
+$$\lVert \mathbf{h}^{(L)} \rVert = \langle \mathbf{h}^{(L)},\, \hat{\mathbf{h}}^{(L)} \rangle = \langle \mathbf{h}^{(\text{emb})},\, \hat{\mathbf{h}}^{(L)} \rangle + \sum_{\ell=0}^{L-1} \langle \boldsymbol{\delta}_\ell,\, \hat{\mathbf{h}}^{(L)} \rangle$$
+
+So the projections form a complete **decomposition of the final norm into per-layer contributions**. Each layer's percentage is:
+
+$$\text{contribution of layer } \ell = \frac{\langle \boldsymbol{\delta}_\ell,\, \hat{\mathbf{h}}^{(L)} \rangle}{\lVert \mathbf{h}^{(L)} \rVert} \times 100\%$$
+
+This tells us, for example, that layers 30–35 contribute ~80% of the final norm while layers 0–15 contribute less than 5% — meaning early layers build structure orthogonal to the final output direction
 
 ## Methods
 
