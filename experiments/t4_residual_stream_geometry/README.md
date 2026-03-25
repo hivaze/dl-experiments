@@ -560,13 +560,13 @@ Throughout this section, T-4 geometric data (PR, norms, SV spectra, impact metri
 
 T-2 found that layer 0 is catastrophically critical (99.6x loss ratio). T-7 v2 showed it is also linearizable (98.4% recovery with a ridge-fitted linear map). T-4 explains why both are true: layer 0 is the only layer that *increases* dimensionality (PR: 73→125) and completely redirects the representation (cos(io) = 0.11). This geometric expansion is a specific, learnable linear transformation — which is why linear replacement works but removal is catastrophic.
 
-T-7 v2 (with ridge regression and proper train/test split) shows that **only 14 of 36 layers achieve $\geq$ 73% CE recovery** (range: 37–98.4%), correcting both the original OLS results (catastrophic failures from overfitting) and the v1 ridge results (inflated recovery from lacking train/test validation). The relationship with T-4's geometry:
+T-7 v2 (with ridge regression and proper train/test split) shows that **only 15 of 36 layers achieve $\geq$ 73% CE recovery** (range: 37–98.4%), correcting both the original OLS results (catastrophic failures from overfitting) and the v1 ridge results (inflated recovery from lacking train/test validation). The relationship with T-4's geometry:
 
 | T-4 Geometry Region | Layers | PR | T-7 v2 Ridge Recovery |
 |---|---|---|---|
 | Early collapse (low PR) | 1–5 | 6–43 | 72–85% |
 | Mid recovery (high PR) | 6–15 | 147–205 | 54–83% (L6: 54%, L10: 83%) |
-| Deep collapse (low PR) | 16–24 | 2.3–16.8 | 37–70% (worst region) |
+| Deep collapse (low PR) | 16–24 | 2.3–16.8 | 44–70% (worst region) |
 | Late recovery | 25–34 | 24–127 | 52–65% |
 
 The geometric correlation is stronger than the v1 ridge numbers suggested: **low-PR regions (deep collapse, layers 16–24) substantially resist linearization** (37–70% recovery), while high-PR regions are moderately linearizable. L6 is a notable exception — high PR (197) but only 54% recovery, because its nonlinear residual carries critical downstream information (T-2's 2nd most critical layer).
@@ -577,10 +577,10 @@ T-2 also found layer 6 is a computational hub (2nd most critical at 21.7x, appea
 
 T-7 found a U-shaped nonlinearity profile with middle layers (6–18) being most locally linear (gap ~0.13–0.15) but poorly linearizable globally (37–83% CE recovery). T-7 v2's Jacobian consistency data and PCA-aligned gap (Method 8) explain this when combined with T-4's geometry:
 
-- **Layers 6–8**: Moderate Jacobian consistency (0.73–0.82) despite low linearization gap. The Jacobian is smooth at each operating point but varies across inputs. These layers have high PR (197–205) — the many active dimensions create room for input-dependent behavior. Method 8 shows layers 11–18 have gap ratio $\geq$ 1.0 (nonlinearity aligned with data-relevant directions), explaining why locally linear layers resist global linearization.
+- **Layers 6–8**: Moderate Jacobian consistency (0.73–0.82) despite low linearization gap. The Jacobian is smooth at each operating point but varies across inputs. These layers have high PR (197–205) — the many active dimensions create room for input-dependent behavior. Method 8 shows layers 11, 15–18 have gap ratio $\geq$ 1.0 (nonlinearity aligned with data-relevant directions), with L10, 12–14 near-isotropic (0.92–0.98), explaining why locally linear layers resist global linearization.
 - **Layers 29–35**: High consistency (0.84–0.90), meaning the Jacobian is nearly the same regardless of input. Norms are largest here (236–571), and the late-layer norm growth dominates over input-dependent variation. The update-residual alignment is strongly positive (cos = 0.29–0.44), confirming these layers perform a consistent, reinforcing transformation.
 
-T-7 also found that MLP nonlinearity drives the late-layer spike (MLP gap 0.24 at layer 35). The final-layer dispersal requires nonlinear transformation that SwiGLU provides — the strongly negative update-residual alignment (cos = −0.73) shows this is an active reversal, not just noise.
+T-7 also found that MLP nonlinearity drives the late-layer spike (MLP gap 0.25 at layer 35). The final-layer dispersal requires nonlinear transformation that SwiGLU provides — the strongly negative update-residual alignment (cos = −0.73) shows this is an active reversal, not just noise.
 
 ### T-9 (Weight Spectral Structure): Weight Rank vs Representation Dimensionality
 
@@ -621,7 +621,7 @@ Combining T-4 with other experiments reveals a coherent six-phase pipeline:
 | **Geometric expansion** | 0 | 73→125 | Norm 1→7.7 | cos(io)=0.11, ratio=1.0 | Critical (99.6x, T-2), linearizable (98.4%, T-7) |
 | **First compression** | 1–5 | 6–43 | Top-1 SV 14–40% | Reinforcing (cos(d,h)=+0.37) | Linearizable (72–85%, T-7) |
 | **Distributed processing** | 6–15 | 147–205 | Top-1 SV 3–4% | Weakly opposing (cos(d,h)=−0.10) | Hub at L6 (21.7x, T-2), variable recovery (54–83%, T-7) |
-| **Second compression** | 16–24 | 2.3–16.8 | Top-1 SV 36–79% | Transitioning to reinforcing | Prediction accuracy begins climb (T-1), worst linearizability (37–70%, T-7) |
+| **Second compression** | 16–24 | 2.3–16.8 | Top-1 SV 36–79% | Transitioning to reinforcing | Prediction accuracy begins climb (T-1), worst linearizability (44–70%, T-7) |
 | **Output preparation** | 25–34 | 24–127 | Norm 139→571 | Strongly reinforcing (cos(d,h)=+0.35) | Cheapest swap region (T-3), ~50% of final norm |
 | **Dispersal** | 35 | 160 | Cosine 0.63→0.09 | Opposing (cos(d,h)=−0.73), ratio=1.38 | Universal discriminator (T-17), 99.5% accuracy (T-1) |
 

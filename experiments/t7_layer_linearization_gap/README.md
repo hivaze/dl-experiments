@@ -106,14 +106,31 @@ This is a line in log-log space with slope $\beta = k - 1$, so $k = \beta + 1$. 
 
 ### Spectral Norm and Mean Amplification
 
-**Spectral norm** $\lVert\mathbf{J}\rVert_2 = \sigma_{\max}(\mathbf{J})$ is the maximum factor by which $\mathbf{J}$ can stretch any unit vector. We estimate it via **power iteration**: start with a random unit vector $\mathbf{v}_0$, then repeatedly compute $\mathbf{v}_{k+1} = \mathbf{J}\mathbf{v}_k / \lVert\mathbf{J}\mathbf{v}_k\rVert$. After $K = 5$ iterations, $\lVert\mathbf{J}\mathbf{v}_K\rVert \approx \sigma_{\max}$ with error $\mathcal{O}((\sigma_2/\sigma_1)^K)$. Each $\mathbf{Jv}$ is computed via central differences.
+**Spectral norm** is the maximum factor by which the Jacobian can stretch any unit vector:
 
-**Mean amplification** averages $\lVert\mathbf{Jd}_i\rVert$ over random unit vectors $\mathbf{d}_i$. It approximates $\lVert\mathbf{J}\rVert_F / \sqrt{d}$ — the RMS singular value. If $< 1$, the layer typically contracts perturbations even if a few singular values exceed 1.
+$$\lVert\mathbf{J}\rVert_2 = \sigma_{\max}(\mathbf{J}) = \max_{\lVert\mathbf{d}\rVert=1} \lVert\mathbf{J}\mathbf{d}\rVert$$
 
-**Stability interpretation.** The full layer map $F(\mathbf{x}) = \mathbf{x} + g(\mathbf{x})$ has Jacobian $\mathbf{I} + \mathbf{J}_g$. For stability through 36 layers:
-- $\lVert\mathbf{J}_g\rVert_2 < 1$: contractive (perturbations shrink)
-- $\lVert\mathbf{J}_g\rVert_2 > 1$: expansive in some directions
-- Since mean amplification $< 1$ for layers 1-35, the Jacobian is "mostly contractive" — $\mathbf{J}_F \approx \mathbf{I}$, ensuring neither vanishing nor exploding gradients
+We estimate it via **power iteration** — start with a random unit vector, then repeatedly multiply by the Jacobian and normalize:
+
+$$\mathbf{v}_{k+1} = \frac{\mathbf{J}\mathbf{v}_k}{\lVert\mathbf{J}\mathbf{v}_k\rVert}$$
+
+After $K = 5$ iterations, the norm converges:
+
+$$\lVert\mathbf{J}\mathbf{v}_K\rVert \approx \sigma_{\max} \qquad \text{with error } \mathcal{O}\big((\sigma_2 / \sigma_1)^K\big)$$
+
+Each Jacobian-vector product is computed via central differences (no need to store the full matrix).
+
+**Mean amplification** averages the Jacobian's action over random unit directions:
+
+$$\text{mean amplification} = \frac{1}{N}\sum_{i=1}^{N} \lVert\mathbf{J}\mathbf{d}_i\rVert \approx \frac{\lVert\mathbf{J}\rVert_F}{\sqrt{d}}$$
+
+This equals the RMS singular value. If it is $< 1$, the layer typically contracts perturbations even if a few individual singular values exceed 1.
+
+**Stability interpretation.** The full layer (with skip connection) has Jacobian:
+
+$$\mathbf{J}_F = \mathbf{I} + \mathbf{J}_g$$
+
+For stable propagation through 36 layers, we need most layers to be contractive. Since mean amplification $< 1$ for layers 1-35, the correction Jacobian is "mostly contractive" and the full-layer Jacobian is close to the identity — the layer makes small, stable corrections to the residual stream, preventing both vanishing and exploding gradients.
 
 ### Jacobian Consistency: Local vs Global Linearity
 
@@ -121,38 +138,50 @@ This is a line in log-log space with slope $\beta = k - 1$, so $k = \beta + 1$. 
 
 **Example:** $g(x) = x^2$ is locally linear everywhere (the tangent line fits well near any point), but the slope $2x$ changes with $x$. No single linear function fits all points well. Similarly, a transformer layer might apply smooth attention at each input, but different inputs produce different attention patterns.
 
-**Measuring consistency.** Pick random directions $\hat{\mathbf{d}}_1, \ldots, \hat{\mathbf{d}}_D$ and compute $\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}$ at multiple data points $\mathbf{x}_1, \ldots, \mathbf{x}_K$. If the Jacobian is the same everywhere, all these vectors point in the same direction. Measure via pairwise cosine similarity:
+**Measuring consistency.** Pick $D$ random directions and compute the Jacobian-vector product at $K$ different data points. If the Jacobian is the same everywhere, all these output vectors point in the same direction. We measure via pairwise cosine similarity, averaged over directions:
 
 $$C_g = \mathbb{E}_{\hat{\mathbf{d}}} \left[ \underset{i \neq j}{\text{mean}} \cos\Big(\mathbf{J}(\mathbf{x}_i)\hat{\mathbf{d}}, \quad \mathbf{J}(\mathbf{x}_j)\hat{\mathbf{d}}\Big) \right]$$
 
-- $C_g = 1$: globally linear — one $W$ suffices
-- $C_g \to 0$: input-dependent Jacobians — only locally linear
+If $C_g = 1$, the layer is globally linear (one $W$ suffices). If $C_g \to 0$, the Jacobians are input-dependent (only locally linear).
 
-**Connection to linear replacement (Method 7).** The least-squares solution $\mathbf{W} = (\sum_k g(\mathbf{x}_k)\mathbf{x}_k^\top)(\sum_k \mathbf{x}_k \mathbf{x}_k^\top)^{-1}$ is a data-weighted average of per-point Jacobians. If Jacobians are consistent ($C_g \to 1$), this average is close to any individual Jacobian and the replacement works well. If they vary ($C_g \ll 1$), the average washes out input-specific structure.
+**Connection to linear replacement (Method 7).** The least-squares solution is a data-weighted average of per-point Jacobians:
+
+$$\mathbf{W} = \Big(\sum_k g(\mathbf{x}_k)\mathbf{x}_k^\top\Big)\Big(\sum_k \mathbf{x}_k \mathbf{x}_k^\top\Big)^{-1}$$
+
+If Jacobians are consistent ($C_g \to 1$), this average is close to any individual Jacobian and the replacement works well. If they vary ($C_g \ll 1$), the average washes out input-specific structure.
 
 ## Methods
 
 ### Method 1: Perturbation Gap (Primary Metric)
 
 For each layer with input $\mathbf{x}$ and transform $g(\mathbf{x})$:
-1. Generate 16 random unit perturbation directions $\mathbf{d}_i$
-2. Scale perturbation to bf16-safe magnitude: $\boldsymbol{\delta}_i = \varepsilon \lVert\mathbf{x}\rVert \hat{\mathbf{d}}_i$ with $\varepsilon = 0.05$
-3. Estimate JVP via central differences: $\mathbf{J}\boldsymbol{\delta} \approx (g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x}-\boldsymbol{\delta})) / 2$
-4. Compare actual displacement $g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x})$ to linear prediction $\mathbf{J}\boldsymbol{\delta}$
-5. Gap $= \lVert\text{actual} - \text{linear}\rVert / \lVert\text{actual}\rVert$, averaged over directions and tokens
+1. Generate 16 random unit perturbation directions
+2. Scale each perturbation to bf16-safe magnitude ($\varepsilon = 0.05$):
+$$\boldsymbol{\delta}_i = \varepsilon \lVert\mathbf{x}\rVert \hat{\mathbf{d}}_i$$
+3. Estimate JVP via central differences:
+$$\mathbf{J}\boldsymbol{\delta} \approx \frac{g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x}-\boldsymbol{\delta})}{2}$$
+4. Compute the gap — ratio of nonlinear residual to actual displacement:
+$$\text{gap} = \frac{\lVert(g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x})) - \mathbf{J}\boldsymbol{\delta}\rVert}{\lVert g(\mathbf{x}+\boldsymbol{\delta}) - g(\mathbf{x})\rVert}$$
+5. Average over all directions and tokens
 
 ### Method 3: Attention vs MLP Decomposition
 
-Applies the perturbation gap separately to:
-- **Attention sublayer**: $f_{\text{attn}}(\mathbf{x}) = W_o \cdot \text{Attn}(\text{LN}_1(\mathbf{x}))$
-- **MLP sublayer**: $f_{\text{mlp}}(\mathbf{x}) = W_{\text{down}} \cdot \text{SwiGLU}(\text{LN}_2(\mathbf{x} + f_{\text{attn}}(\mathbf{x})))$
+Applies the perturbation gap separately to each sublayer:
+
+**Attention sublayer** (nonlinearity from softmax + RMSNorm):
+
+$$f_{\text{attn}}(\mathbf{x}) = W_o \cdot \text{Attn}(\text{RMSNorm}(\mathbf{x}))$$
+
+**MLP sublayer** (nonlinearity from SiLU gating + RMSNorm):
+
+$$f_{\text{mlp}}(\mathbf{x}) = W_{\text{down}} \cdot \text{SwiGLU}\big(\text{RMSNorm}(\mathbf{x} + f_{\text{attn}}(\mathbf{x}))\big)$$
 
 The MLP function includes the attention computation (its input depends on it), measuring the *marginal* nonlinearity of adding MLP to the attention output.
 
 ### Method 4: Jacobian Spectral Properties
 
-- **Spectral norm** $\lVert\mathbf{J}\rVert_2$: power iteration with finite-difference JVPs (5 iterations, 16 samples)
-- **Mean amplification** $\mathbb{E}[\lVert\mathbf{J}\hat{\mathbf{d}}\rVert]$: average Jacobian action on random unit vectors
+- **Spectral norm**: estimated via power iteration with finite-difference JVPs (5 iterations). Measures worst-case amplification
+- **Mean amplification**: average of Jacobian-vector product norms over 16 random unit vectors. Measures typical amplification
 
 ### Method 5: Multi-Scale Nonlinearity Order
 
@@ -214,6 +243,8 @@ Interpretation:
 
 ### Perturbation Gap Across Depth
 
+The left panel shows the overall perturbation gap across depth (U-shaped), while the right panel decomposes it into attention vs MLP sublayer contributions.
+
 ![Linearization Gap](results/linearization_gap_v2.png)
 
 | Layer Range | Perturb Gap | Attn Gap | MLP Gap | Interpretation |
@@ -233,11 +264,15 @@ Key observations:
 
 ### Multi-Scale Nonlinearity Order
 
+Left: log-log gap vs $\varepsilon$ curves for selected layers (steeper = more quadratic). Center: fitted nonlinearity order across depth. Right: $R^2$ of the log-log fit (bars below 0.5 threshold are flagged unreliable).
+
 ![Multi-Scale Analysis](results/multiscale_analysis_v2.png)
 
 The fitted nonlinearity order ranges from ~0.3 (early layers) to ~2.0 (late layers). Early layers (0-5) show sub-linear scaling (order 0.3-1.0) consistent with RMSNorm dampening, while late layers (25-35) approach the expected quadratic scaling (order 1.5-2.0), suggesting higher-order feature interactions via SwiGLU. Log-log fits have $R^2$ of 0.85-0.98 for most layers.
 
 ### Jacobian Properties
+
+Three panels: spectral norm (worst-case amplification), mean amplification (typical amplification), and transform-to-input ratio (how large the layer's correction is relative to the input). Layer 0 dominates all three metrics.
 
 ![Jacobian Properties](results/jacobian_properties_v2.png)
 
@@ -251,15 +286,19 @@ The fitted nonlinearity order ranges from ~0.3 (early layers) to ~2.0 (late laye
 
 **Layer 0** is an expansive map: spectral norm 5.3, mean amplification 3.2, transform magnitude 8.23x. All other layers are contractive on average (mean amplification $< 1$ in a tight range), suggesting a strong training-time constraint on Jacobian norms.
 
-**Dynamical systems interpretation.** The full layer map $F(\mathbf{x}) = \mathbf{x} + g(\mathbf{x})$ has Jacobian $\mathbf{J}_F = \mathbf{I} + \mathbf{J}_g$. Since $\mathbf{J}_g$ is contractive on average ($\lVert\mathbf{J}_g\rVert_F / \sqrt{d} < 1$), most eigenvalues of $\mathbf{J}_g$ are small, making $\mathbf{J}_F \approx \mathbf{I}$ — small, stable corrections to the residual stream. The product of 36 such Jacobians avoids both vanishing and exploding gradients.
+**Dynamical systems interpretation.** The full layer map has Jacobian $\mathbf{I} + \mathbf{J}_g$ (identity plus correction). Since the correction Jacobian is contractive on average (Frobenius norm divided by $\sqrt{d}$ is below 1), most of its eigenvalues are small. The full-layer Jacobian is therefore close to the identity — each layer makes small, stable corrections to the residual stream. The product of 36 such near-identity Jacobians avoids both vanishing and exploding gradients.
 
 ### Per-Prompt Gap Variability
+
+Heatmap of perturbation gap by layer (y-axis) and prompt (x-axis). Uniform horizontal bands indicate that gap is determined by layer depth, not input content.
 
 ![Gap Heatmap](results/gap_heatmap_v2.png)
 
 Most gap variation is **structural** (across layers) rather than **data-dependent** (across prompts). Per-layer standard deviations are 10-20% of the mean, confirming our conclusions are robust. Exceptions: layer 0 and layers 33-35 show slightly elevated cross-prompt variation.
 
 ### Cross-Reference with T-2 Layer Criticality
+
+Scatter plot of perturbation gap (x-axis) vs T-2 knockout loss delta (y-axis). Each point is a layer, colored by depth. Layer 0 is the extreme outlier in the upper right.
 
 ![Gap vs Criticality](results/gap_vs_criticality_v2.png)
 
@@ -268,6 +307,8 @@ Pearson correlation: **r = 0.35** (moderate), driven primarily by the layer 0 ou
 **Cautionary example — layer 6:** gap = 0.151 (near the linear plateau) yet T-2 criticality = 1.88 (2nd highest). Residual R² = 0.997 yet only 54% CE recovery. The tiny nonlinear residual carries disproportionate downstream information.
 
 ### Jacobian Consistency Across Inputs
+
+Left: consistency score across depth (loosely increasing). Right: scatter of perturbation gap (local nonlinearity) vs consistency (global linearity), showing these are largely independent metrics.
 
 ![Jacobian Consistency](results/jacobian_consistency_v2.png)
 
@@ -285,6 +326,8 @@ Layer 0 has the lowest consistency (0.65) — the most input-dependent Jacobian 
 **Critical finding: consistency does NOT predict CE recovery.** Layers 19-31 have high consistency (0.75-0.86) yet poor recovery (47-65%). Even when one $W$ fits well, the nonlinear residual carries information critical for downstream computation.
 
 ### Data-Aligned Perturbation Gap (Method 8)
+
+Left: on-manifold (PCA directions, green) vs off-manifold (random directions, red) perturbation gap across depth. Center: gap ratio (on/off) — values above 1.0 (gray line) indicate nonlinearity aligned with data. Right: effective rank of input activations per layer.
 
 ![PCA-Aligned Gap](results/pca_aligned_gap.png)
 
@@ -304,7 +347,11 @@ The **gap ratio** (on-manifold / off-manifold) reveals whether nonlinearity is a
 
 ### Global Linear Replacement (Method 7)
 
+Top panel: CE recovery (%) for each layer across fitting methods (residual, normalized, full-output, low-rank). Bottom panel: loss delta vs baseline for knockout, identity (skip-only), and linear replacement approaches.
+
 ![Layer replacement analysis](results/layer_replacement_v2.png)
+
+Left: residual R² across depth (raw vs normalized input). Right: scatter of R² vs CE recovery — the lack of correlation is the experiment's central finding.
 
 ![Residual fitting analysis](results/residual_fitting_v2.png)
 
@@ -372,6 +419,8 @@ Layers 8-18 have the lowest perturbation gaps (~0.13) yet recovery ranges from 3
 T-9 found **r = -0.43, p = 0.009** between weight effective rank and linearization gap. Higher-rank layers are *more linear*, not less — high-rank layers spread computation across many dimensions where self-averaging makes the aggregate more linear (CLT-type effect).
 
 ### Layer 0 Paradox Resolution
+
+Left: Layer 0 metrics side-by-side — high off-manifold gap but low on-manifold gap, high R² and near-perfect CE recovery. Right: scatter of on-manifold gap vs residual R² across all layers (Layer 0 labeled).
 
 ![Layer 0 Paradox](results/paradox_resolution.png)
 

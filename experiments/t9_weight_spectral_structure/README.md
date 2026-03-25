@@ -399,7 +399,7 @@ Overall correlation: **r = -0.186, p = 0.28** (not significant). However, per-ma
 
 **Interpretation:** The negative correlation for K suggests a "specialization-criticality tradeoff": layers that compress their key space into fewer dimensions are performing more unique computations that cannot be compensated by other layers. Conversely, layers with high K-rank (many attention patterns) are more redundant and easier to remove.
 
-**Update from T-7 v2 (Enhanced Layer Replacement):** T-7 v2 (with ridge regression and proper 80/20 train/test split) shows that **only 14 of 36 layers achieve $\geq$ 73% CE recovery** (range: 37–98.4%). The original OLS experiment reported catastrophic failures (overfitting artifact), while v1 ridge (without train/test split) over-claimed "all layers $\geq$ 73%." The v2 picture: layers 0–5 recover 72–98%, but middle-to-late layers (15–33) cluster around 37–65% — locally linear but globally resistant to linearization because their small nonlinear residuals carry critical downstream information (e.g., L6: R²=0.997, recovery=54%). Low-rank replacements still substantially underperform full-rank, confirming that the *aggregate* layer computation requires near-full rank despite low Q/K effective rank ratios.
+**Update from T-7 v2 (Enhanced Layer Replacement):** T-7 v2 (with ridge regression and proper 80/20 train/test split) shows that **only 15 of 36 layers achieve $\geq$ 73% CE recovery** (range: 37–98.4%). The v2 picture: layers 0–5 recover 72–98%, but middle-to-late layers (16–33) cluster around 44–65% — locally linear but globally resistant to linearization because their small nonlinear residuals carry critical downstream information (e.g., L6: R²=0.997, recovery=54%). Low-rank replacements still substantially underperform full-rank, confirming that the *aggregate* layer computation requires near-full rank despite low Q/K effective rank ratios.
 
 #### T-7 Linearization Gap
 
@@ -481,7 +481,7 @@ Uniform-rank LoRA wastes parameters on redundant plateau layers and under-fits c
 
 ### Pruning Guidance
 
-**5. K-rank as a pruning signal.** Layers with high K-rank are more redundant and safer to remove (see conclusion #5). T-7 v2 shows these layers can also be *replaced* by a full-rank ridge-fitted linear map, though recovery varies significantly by layer (37–98%) — only 14/36 layers achieve $\geq$ 73%. Low-rank replacement (rank 64-256) remains inadequate, confirming that the full layer computation requires near-full rank even though individual K/Q matrices are low-rank.
+**5. K-rank as a pruning signal.** Layers with high K-rank are more redundant and safer to remove (see conclusion #5). T-7 v2 shows these layers can also be *replaced* by a full-rank ridge-fitted linear map, though recovery varies significantly by layer (37–98%) — only 15/36 layers achieve $\geq$ 73%. Low-rank replacement (rank 64-256) remains inadequate, confirming that the full layer computation requires near-full rank even though individual K/Q matrices are low-rank.
 
 **6. Do not compress layers 0, 33-35.** These carry load-bearing nonlinear computation (see conclusions #7, Key Finding 4). Additionally, layers 34-35 show unexpected up_proj rank compression (0.60→0.52 vs ~0.68 average), suggesting specialized output-preparation computation. K-proj at layer 5 has κ = 2424 (vs mean ~106) — compression there risks amplifying numerical instability.
 
@@ -500,7 +500,7 @@ Depth-varying: the Q-rank jump at layer 24→25 (see Key Finding 4) motivates wi
 ### Convergent Evidence
 
 - **T-7 (Linearization Gap)**: Plateau layers are both low-rank and near-linear, making them candidates for compression — though T-7 v2 shows recovery varies widely (37–85% for plateau layers), so linearization is not uniformly viable
-- **T-2 (Layer Knockout)**: Low K-rank predicts high criticality (see cross-reference above); plateau layers have low criticality overall. T-7 v2 shows that full-rank ridge-fitted linear replacement achieves 37–98% recovery depending on layer (only 14/36 $\geq$ 73%), and low-rank replacement remains inadequate — per-matrix low effective rank (Q at 0.25, K at 0.38) does not enable low-rank layer replacement because the aggregate computation involves cross-dimensional interactions
+- **T-2 (Layer Knockout)**: Low K-rank predicts high criticality (see cross-reference above); plateau layers have low criticality overall. T-7 v2 shows that full-rank ridge-fitted linear replacement achieves 37–98% recovery depending on layer (only 15/36 $\geq$ 73%), and low-rank replacement remains inadequate — per-matrix low effective rank (Q at 0.25, K at 0.38) does not enable low-rank layer replacement because the aggregate computation involves cross-dimensional interactions
 - **T-3 (Layer Swap Cost)**: Adjacent plateau layers have cheap swap costs, consistent with low Q-rank making them interchangeable
 
 ## Usage
