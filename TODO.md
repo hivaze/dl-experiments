@@ -59,7 +59,7 @@ For each prompt, force-decode semantically related completions (synonyms, antony
 - **Divergence onset**: identify the first layer where antonym representations separate beyond a statistical threshold (synonym mean − 2σ).
 - Cross-reference with T-1 (logit lens phases), T-4 (geometry), T-7 (linearization gap). Hypothesis: divergence onset aligns with T-1's "prediction formation" phase and T-7's high-nonlinearity layers.
 
-### T-18. Spectral-Guided PEFT Validation
+### T-18. Spectral-Guided PEFT Validation ✅ [completed](experiments/t18_spectral_guided_peft/)
 Validate the spectral predictions from T-9, T-7, and T-4 by actually training LoRA adapters with different rank/layer configurations on Qwen3-4B-Instruct-2507.
 
 **Core questions:**

@@ -57,7 +57,7 @@ NUM_TRAIN = 2000
 NUM_EPOCHS = 2
 BATCH_SIZE = 4
 GRAD_ACCUM = 4
-LR = 2e-4
+LR = 5e-6
 MAX_SEQ_LEN = 512
 LORA_DROPOUT = 0.05
 
@@ -249,6 +249,21 @@ def extract_boxed(text: str) -> Optional[str]:
     return None
 
 
+def extract_math_answer(text: str) -> Optional[str]:
+    """Extract answer from model response: try \\boxed{} first, then fallback patterns."""
+    ans = extract_boxed(text)
+    if ans:
+        return ans
+    # Fallback: "answer is X" or "answer is **X**"
+    m = re.search(r"(?:answer|result)\s+is\s*\*\*([^*]+)\*\*", text, re.I)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"(?:answer|result)\s+is\s*[:\s]*\$?([^\n.]+)", text, re.I)
+    if m:
+        return m.group(1).strip().rstrip(".")
+    return None
+
+
 def normalize_math_answer(ans: str) -> str:
     """Normalize a math answer for comparison."""
     if ans is None:
@@ -257,9 +272,14 @@ def normalize_math_answer(ans: str) -> str:
     # Remove \left, \right, \, spacing commands
     for cmd in ["\\left", "\\right", "\\,", "\\;", "\\!", "\\:"]:
         ans = ans.replace(cmd, "")
+    # Normalize \dfrac -> \frac
+    ans = ans.replace("\\dfrac", "\\frac")
+    # Normalize \sqrt2 -> \sqrt{2} (bare single-char arg)
+    ans = re.sub(r"\\sqrt(\d)(?!\{)", r"\\sqrt{\1}", ans)
+    # Remove ^\circ for degree comparisons (compare just the number)
+    ans = ans.replace("^\\circ", "").replace("^{\\circ}", "")
     # Normalize whitespace
-    ans = re.sub(r"\s+", " ", ans).strip()
-    # Try numeric comparison
+    ans = re.sub(r"\s+", "", ans).strip()
     return ans
 
 
@@ -290,8 +310,7 @@ def evaluate_math500(model, tokenizer, device, max_samples=None):
 
     for i, ex in enumerate(ds):
         messages = [
-            {"role": "system", "content": "Solve the math problem step by step. Put your final answer in \\boxed{}."},
-            {"role": "user", "content": ex["problem"]},
+            {"role": "user", "content": "Solve this math problem. Be concise. Put your final answer in \\boxed{}.\n\n" + ex["problem"]},
         ]
         text = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True,
@@ -302,14 +321,14 @@ def evaluate_math500(model, tokenizer, device, max_samples=None):
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=1024,
+                max_new_tokens=2048,
                 do_sample=False,
                 temperature=None,
                 top_p=None,
             )
 
         response = tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-        pred = extract_boxed(response)
+        pred = extract_math_answer(response)
         gold = ex["answer"].strip()
 
         if answers_match(pred, gold):
@@ -541,7 +560,8 @@ def train_config(config_name, device, tokenizer, train_dataset):
         warmup_steps=50,
         bf16=True,
         logging_steps=25,
-        save_strategy="no",
+        save_strategy="epoch",
+        save_total_limit=1,
         report_to="none",
         seed=SEED,
         dataloader_pin_memory=True,
@@ -567,8 +587,8 @@ def train_config(config_name, device, tokenizer, train_dataset):
     gsm8k_results = evaluate_gsm8k(model, tokenizer, device, max_samples=200)
     log(f"  GSM8K accuracy: {gsm8k_results['accuracy']:.3f} ({gsm8k_results['correct']}/{gsm8k_results['total']})")
 
-    log(f"  Evaluating MATH-500 (OOD)...")
-    math500_results = evaluate_math500(model, tokenizer, device)
+    log(f"  Evaluating MATH-500 (OOD, 200 samples)...")
+    math500_results = evaluate_math500(model, tokenizer, device, max_samples=200)
     log(f"  MATH-500 accuracy: {math500_results['accuracy']:.3f} ({math500_results['correct']}/{math500_results['total']})")
 
     log(f"  Computing calibration perplexity...")
@@ -845,8 +865,8 @@ def main():
         base_gsm8k = evaluate_gsm8k(base_model, tokenizer, "cuda:0", max_samples=200)
         log(f"  Base GSM8K accuracy: {base_gsm8k['accuracy']:.3f}")
 
-        log("Evaluating base model on MATH-500 (OOD)...")
-        base_math500 = evaluate_math500(base_model, tokenizer, "cuda:0")
+        log("Evaluating base model on MATH-500 (OOD, 200 samples)...")
+        base_math500 = evaluate_math500(base_model, tokenizer, "cuda:0", max_samples=200)
         log(f"  Base MATH-500 accuracy: {base_math500['accuracy']:.3f}")
 
         log("Computing base calibration perplexity...")

@@ -1,0 +1,22 @@
+{
+  "config": "A",
+  "description": "Uniform r=16 all layers",
+  "trainable_params": 33030144,
+  "total_params": 4055498240,
+  "train_loss": 1.1732,
+  "train_time_s": 145.0,
+  "gsm8k": {
+    "accuracy": 0.905,
+    "correct": 181,
+    "total": 200
+  },
+  "math500": {
+    "accuracy": 0.78,
+    "correct": 156,
+    "total": 200
+  },
+  "calibration": {
+    "perplexity": 3.5445598104427303,
+    "avg_loss": 1.2654
+  }
+}

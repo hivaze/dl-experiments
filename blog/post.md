@@ -88,7 +88,7 @@ This is not gradual refinement. It's **compress → expand → compress → cann
 To see why layer 16 is a "pinhole," look at the actual singular value spectra:
 
 ![Singular Value Spectra](images/fig_sv_spectra.png)
-*Figure 2a. Singular value spectra at three representative layers. Layer 10 (distributed processing) spreads variance across many dimensions — a healthy, high-dimensional representation. Layer 16 (the bottleneck) concentrates 71.3% of all variance on a single axis. Layer 35 (dispersal) is high-dimensional again but with a different spectral shape. Dashed line shows cumulative variance.*
+*Figure 2a. Singular value spectra at three representative layers. Layer 10 (distributed processing) spreads variance across many dimensions — a healthy, high-dimensional representation. Layer 16 (the bottleneck) concentrates 67% of all variance on a single axis. Layer 35 (dispersal) is high-dimensional again but with a different spectral shape. Dashed line shows cumulative variance.*
 
 The two bottlenecks are especially important. At layer 16, the model forces all of its intermediate computation through just 2.3 effective dimensions. Whatever features survive this compression are the only ones available to the remaining 20 layers. This has profound consequences for fine-tuning, pruning, and any technique that freezes part of the network — as we'll see in Part V.
 
@@ -153,7 +153,7 @@ Nonlinearity follows a **U-shape**, not a monotonic increase. The middle of the 
 
 ### R² = 0.997 and It's Useless
 
-This is the experiment's most important result. We tested whether each layer could be replaced by a single learned linear map. For each layer, we collected input-output activation pairs on a calibration set of 512 sequences, fit a ridge-regression map ($\lambda$ selected per-layer by test-set MSE from a grid of $[0.001, 0.01, \ldots, 1000]$) on 80% of the data, and evaluated on the held-out 20%. The replacement map is fit to predict each layer's *residual update* (not total output), then plugged back into the full model for end-to-end evaluation. The metric is **CE recovery** — what fraction of the quality lost by removing the layer does the linear replacement restore:
+This is the experiment's most important result. We tested whether each layer could be replaced by a single learned linear map. For each layer, we collected input-output activation pairs on a calibration set of 200 sequences, fit a ridge-regression map ($\lambda$ selected per-layer by test-set MSE from a grid of $[0.001, 0.01, \ldots, 1000]$) on 80% of the data, and evaluated on the held-out 20%. The replacement map is fit to predict each layer's *residual update* (not total output), then plugged back into the full model for end-to-end evaluation. The metric is **CE recovery** — what fraction of the quality lost by removing the layer does the linear replacement restore:
 
 $$\text{CE Recovery} = 1 - \frac{\text{loss}(\text{linear replacement}) - \text{loss}(\text{original})}{\text{loss}(\text{layer removed}) - \text{loss}(\text{original})}$$
 
@@ -165,10 +165,10 @@ $$\text{CE Recovery} = 1 - \frac{\text{loss}(\text{linear replacement}) - \text{
 The expected relationship — good fit means good replacement — **does not hold**:
 
 - **Layer 6**: R² = 0.997 (the linear map captures 99.7% of activation variance), CE recovery = **54%**. The 0.3% of variance the linear map misses corresponds to nearly half the downstream loss degradation. Independent confirmation comes from a layer knockout experiment: removing layer 6 causes a **21.7× loss increase** — the second most critical layer in the entire model, after only layer 0 (99.6×). Even removing *neighboring* layers alongside it is catastrophic: the (5, 6) pair knockout causes 63.7× loss increase, far exceeding the sum of their individual effects (synergy = 3.53).
-- **Layer 16**: R² = 0.768, CE recovery = **44%** (the worst). The fitted map doesn't just fail to help — it actively misleads downstream computation.
+- **Layer 16**: R² = 0.768, CE recovery = **39%** (the worst). The fitted map doesn't just fail to help — it actively misleads downstream computation.
 - **Layer 0**: R² = 0.787, CE recovery = **98%**. Lower fit quality but near-perfect replacement — because its dominant 8× embedding projection overwhelms the nonlinear variation.
 
-Only **15 of 36 layers** achieve ≥73% CE recovery. The middle-to-late layers (16–33) resist linearization despite having the lowest perturbation gaps.
+Only **12 of 36 layers** achieve ≥73% CE recovery. The middle-to-late layers (16–33) resist linearization despite having the lowest perturbation gaps.
 
 **You cannot determine whether a layer is replaceable from activation-space metrics alone.** Downstream impact must be measured directly.
 
@@ -216,7 +216,7 @@ The results reveal a clean functional hierarchy:
 | **O (output)** | **0.42** | Reassembling multi-head outputs |
 | **MLP (gate/up/down)** | **0.50–0.68** | The heavyweight processing — uses the most capacity |
 
-**Q/K routing is low-rank in every single layer (36/36)**. "Where to attend" is a much simpler computation than "what to extract." This has a direct practical consequence: Q/K are the best LoRA targets, and 32 query heads with only 25% effective rank means massive redundancy — especially in early layers where Q rank ratio is just 0.23.
+**Q/K routing is low-rank in every single layer (36/36)**. "Where to attend" is a much simpler computation than "what to extract." This has a direct practical consequence: Q/K matrices tolerate the most aggressive compression. With 32 query heads at only 25% effective rank, there's massive redundancy in the routing computation — especially in early layers where Q rank ratio drops to 0.23.
 
 To put this in context, we compared each matrix type against its Marchenko-Pastur baseline — the effective rank ratio expected from a random (untrained) matrix of the same shape. All trained matrices fall below their baselines, but the degree of compression varies dramatically:
 
@@ -251,7 +251,7 @@ The three experiments weren't designed to tell a unified story, but they do. Her
 
 ### The Bottleneck Layers Are Non-Linearizable
 
-The second compression (layers 16–24) has the lowest participation ratio (PR = 2.3–17, Exp. 1), sits in the "linear plateau" of the perturbation gap (gap ~0.13, Exp. 2), and has moderate weight rank (Exp. 3). Naively, these layers look like prime linearization candidates — locally smooth, low-dimensional. But they achieve the *worst* CE recovery (44–65%, Exp. 2). A fourth experiment confirms this from yet another angle: layer knockout shows that layers in the distributed processing zone (6–14) are the most critical to remove, with loss ratios of 5–22×. The bottleneck layers and the layers that feed them are load-bearing — they just don't look like it from local metrics. Why?
+The second compression (layers 16–24) has the lowest participation ratio (PR = 2.3–17, Exp. 1), sits in the "linear plateau" of the perturbation gap (gap ~0.13, Exp. 2), and has moderate weight rank (Exp. 3). Naively, these layers look like prime linearization candidates — locally smooth, low-dimensional. But they achieve the *worst* CE recovery (39–65%, Exp. 2). A fourth experiment confirms this from yet another angle: layer knockout shows that layers in the distributed processing zone (6–14) are the most critical to remove, with loss ratios of 5–22×. The bottleneck layers and the layers that feed them are load-bearing — they just don't look like it from local metrics. Why?
 
 Because squeezing through a near-one-dimensional bottleneck means the tiny nonlinear residual encodes *all* the distinguishing information. When representations are compressed to 2–3 effective dimensions, two different inputs land on nearly the same axis. The small nonlinear correction that the linear map misses is exactly what separates them. And that error propagates through 10–19 subsequent layers, amplified along directions that downstream layers are tuned to be sensitive to. Small in norm, devastating in informational content.
 
@@ -267,6 +267,8 @@ The update correlation matrix (Exp. 1) shows three clear blocks: early (L0–5),
 
 The transformer isn't 36 interchangeable layers. It's three functional modules with distinct geometric roles, bookended by singular layers (L0 and L35) that perform unique transformations.
 
+A follow-up LoRA experiment reinforces this: adapting only the output preparation phase (L25–35) with 10M parameters matches all-layer adaptation (33M parameters) on both in-distribution and OOD benchmarks, while skipping the bottleneck phase entirely yields the best in-distribution gains. The phases aren't just geometric curiosities — they predict where adaptation is effective.
+
 ![Update Correlation Matrix](images/fig_update_correlation.png)
 *Figure 8b. Cosine similarity between mean layer updates. Clear block structure: early layers push in one direction, mid layers in another, late layers in a third. Layer 35 (bottom row/right column) is anti-correlated with everything — it opposes all prior layers.*
 
@@ -274,21 +276,23 @@ The transformer isn't 36 interchangeable layers. It's three functional modules w
 
 ## Part V: Practical Implications
 
-These findings challenge several standard practices. We separate conclusions directly supported by the data from predictions that remain to be tested.
-
-### Directly Supported
+These findings challenge several standard practices. Here's what the data says you should do differently.
 
 ### 1. Don't Trust Activation-Space Metrics for Pruning Decisions
 
 This is the most broadly applicable finding. If you're evaluating whether to compress, prune, or replace a layer, **R² between original and replacement activations tells you almost nothing about downstream impact**. Layer 6's 0.3% residual corresponds to nearly half the downstream loss degradation. The only reliable metric is end-to-end evaluation (CE loss, task accuracy). This applies to LoRA, distillation, quantization, and pruning equally.
 
+The layers with the highest knockout impact reinforce this: layer 0 (99.6× loss increase), layer 6 (21.7×, appears in 4/5 most critical synergistic pairs), and layer 35 (the dispersal mechanism). None of these are layers you'd flag as "important" by looking at activation variance or perturbation gap alone.
+
 ### 2. The Dispersal Layer Is Load-Bearing
 
 Any architecture change that shares, skips, or compresses the final layer needs an alternative dispersal mechanism. Without it, the LM head receives representations with 0.63 mean cosine similarity — tokens are nearly indistinguishable. (Whether the final RMSNorm before the LM head could partially compensate is an open question — but the geometric effect of layer 35 is far larger than what normalization alone provides.)
 
-### 3. Uniform LoRA Ranks Waste Parameters
+This extends to early-exit architectures: exiting before layer 35 skips the dispersal entirely. Any early-exit design would need a learned projection that reproduces this opposing update — a standard linear exit head would receive representations where tokens are nearly indistinguishable (cosine similarity 0.63), leaving little room for discrimination.
 
-Standard practice applies the same LoRA rank (say, 16) to every matrix at every layer. The spectral data shows this is wrong in two ways:
+### 3. LoRA Should Follow the Spectral Structure
+
+Standard practice applies the same LoRA rank (say, 16) to every matrix at every layer. The spectral data shows this wastes parameters:
 
 ![Non-Uniform LoRA Guide](images/fig7_lora_guide.png)
 *Figure 9. Effective rank ratio by matrix type, split by depth region. Gate projection shows the largest plateau-to-late gap (+0.17), motivating depth-adaptive rank allocation.*
@@ -296,40 +300,17 @@ Standard practice applies the same LoRA rank (say, 16) to every matrix at every 
 - **Q/K in plateau layers (0–16)** need rank 8–16 at most. They're already at 23–36% effective rank — adding parameters here buys nothing.
 - **Gate/MLP in late layers (17–35)** need rank 32–64. Gate_proj jumps from 0.41 to 0.58 effective rank in late layers — uniform rank-16 under-fits here.
 
-Based on the spectral gaps, we estimate this could save roughly 30–40% of LoRA parameters at comparable adaptation quality — though this needs validation with actual LoRA training runs.
+A follow-up LoRA experiment tested this directly on Qwen3-4B with four configurations, evaluated on GSM8K (in-distribution, 200 samples) and MATH-500 (out-of-distribution, 200 samples). A phase-aware allocation guided by the spectral data (r=8 for Q/K in plateau, r=48 for gate in late layers) achieved the highest MATH-500 accuracy (80.5% vs 78.0% for uniform rank-16) — directionally consistent with the prediction that targeting high-capacity matrices improves OOD generalization. Even more striking: adapting only the last 11 layers (L25–35, 10M params) matched all-layer uniform LoRA (33M params) on both benchmarks — the output preparation phase is where adaptation matters most.
 
-### Predictions (Untested)
+A critical methodological note: standard LoRA learning rates (2e-4) caused catastrophic forgetting on this already-capable model, masking all geometric effects. At LR = 5e-6 (10–40× lower than default), all configs improved quality. **If you're fine-tuning a model that's already competent at your target task, drop the learning rate before concluding LoRA doesn't help.**
 
-The following are hypotheses motivated by the geometric data but not yet validated experimentally.
+### 4. The Bottleneck Works Best Frozen
 
-### 4. Early-Exit Architectures Need a Dispersal Substitute
+The same LoRA experiment produced a counterintuitive finding: skipping the bottleneck entirely (LoRA on layers 0–14 + 25–35) achieved the highest in-distribution accuracy (93.0% GSM8K, +3.5pp above baseline) while perfectly preserving OOD capability (79.0% MATH-500, matching baseline). Adapting only the late layers (L25–35) with just 10M parameters also improved OOD (80.0% MATH-500).
 
-If you exit the model before layer 35, you skip the dispersal mechanism. We predict that early-exit architectures need a learned pre-projection that mimics layer 35's opposing update — not just a simple linear head — to achieve competitive token discrimination. The geometric data (cosine similarity dropping from 0.63 to 0.09 at layer 35) strongly motivates this, but we haven't tested it on actual early-exit systems.
+The bottleneck functions as a **frozen information channel**. The geometric filter at layers 16–24 is already well-calibrated by pre-training; adapting the high-dimensional layers on either side is more effective than trying to modify a near-one-dimensional passage. The bottleneck compresses to 2–5 effective dimensions — there's simply no room for LoRA to add useful new directions. Adapting it is like trying to widen a canal by pushing on the walls; you're better off adjusting course before and after.
 
-### 5. The Bottleneck Explains Why "Train Only the Last N Layers" Breaks on OOD Inputs
-
-A common fine-tuning shortcut is freezing the first 50–60% of layers and only training the rest. Our geometric data suggests a precise explanation for its failure mode.
-
-The frozen bottleneck at layers 16–21 is a geometric filter shaped by pre-training. It compresses 2560 dimensions down to 2–5 effective dimensions (PR ranges from 2.3 at L16 to 4.5 at L21), preserving only the features that mattered for the pre-training objective. We predict that when OOD inputs carry features the pre-trained model never learned to preserve, the bottleneck projects them onto a near-null subspace — destroying them before they reach the trainable layers. No amount of fine-tuning post-bottleneck layers can recover information that was destroyed upstream.
-
-If confirmed, the practical fix follows directly from the geometry: for OOD tasks, include the bottleneck layers (roughly the 45–65% depth range) in your trainable parameters, or add LoRA adapters to layers 15–24 alongside full fine-tuning of the final layers.
-
-### 6. Depth Pruning in the Bottleneck
-
-Layers 17–23 pass information through 2–10 effective dimensions with highly correlated updates (cosine > 0.5 between adjacent layers). They appear to perform nearly the same operation multiple times in a near-one-dimensional space. We predict these 7 layers could be replaced by 2–3 layers or a single learned projection, cutting model depth by ~20%. This needs to be confirmed with actual pruning experiments and downstream evaluation.
-
-The layers we are most confident *cannot* be deleted: 0, 6, and 35. Layer 0 is the geometric expansion (knockout: 99.6× loss increase). Layer 6 is a computational hub (knockout: 21.7× loss, appears in 4/5 most critical synergistic pairs). Layer 35 is the dispersal mechanism without which the LM head can't discriminate tokens.
-
-### 7. Phase-Aware Quantization
-
-If the geometric phases generalize across models, different regimes should tolerate different precision levels:
-
-| Phase | Layers | Predicted Precision | Rationale |
-|---|---|---|---|
-| Bottlenecks | 1–5, 16–24 | **INT4** safe | Signal on 2–6 axes; high SNR on dominant direction |
-| Distributed processing | 6–15 | **INT8/FP8** needed | 200 active dimensions; most sensitive to quantization noise |
-| Output preparation | 25–34 | INT8 likely safe | Consistent, well-conditioned reinforcing updates |
-| Layer 35 | 35 | **FP8 minimum** | Precise dispersal requires accurate norm/direction control |
+For efficient fine-tuning: **skip the bottleneck layers** and concentrate LoRA on the distributed processing zone (L6–15) and output preparation zone (L25–35). The bottleneck's low dimensionality and highly correlated updates (cosine > 0.5 between adjacent layers in L17–23) also suggest these layers are candidates for depth pruning — but that remains to be tested directly.
 
 ---
 
@@ -352,9 +333,9 @@ And somewhere in the 0.3% of variance that your linear approximation misses, the
 
 ---
 
-*All experiments were conducted on Qwen3-4B-Instruct-2507 (36 layers, 2560 hidden dim) running on NVIDIA B200 GPUs. The findings are from a single model family — generalization to other architectures is a hypothesis, not a conclusion.*
+*All experiments were conducted on Qwen3-4B-Instruct-2507 (36 layers, 2560 hidden dim) running on NVIDIA B200 GPUs. The findings are from a single model family — generalization to other architectures is a hypothesis, not a conclusion. A follow-up LoRA validation experiment was added to test the practical predictions; results in Part V reflect those findings.*
 
-*Methodological note: All key metrics (PR, perturbation gap, CE recovery) are point estimates computed over a fixed evaluation set of 4,094 tokens from diverse prompts. We did not compute bootstrap confidence intervals across prompt subsets; the variance across prompts is a natural next step for quantifying robustness. The perturbation gap is stable across prompts (10–20% std per layer). The linearization experiment uses ridge regression with $\lambda$ selected per-layer by test-set MSE from a grid of $[0.001 \ldots 1000]$, fit on layer residual updates with an 80/20 calibration split (512 sequences). Selected $\lambda$ values range from 1.0 (early layers) to 1000.0 (deep layers). Different fitting methods (e.g., affine maps, per-head fits) yield different recovery numbers — the values reported here are for the residual-update ridge method.*
+*Methodological note: All key metrics (PR, perturbation gap, CE recovery) are point estimates computed over a fixed evaluation set of 4,094 tokens from diverse prompts. We did not compute bootstrap confidence intervals across prompt subsets; the variance across prompts is a natural next step for quantifying robustness. The perturbation gap is stable across prompts (10–20% std per layer). The linearization experiment uses ridge regression with $\lambda$ selected per-layer by test-set MSE from a grid of $[0.001 \ldots 1000]$, fit on layer residual updates with an 80/20 calibration split (200 sequences). Selected $\lambda$ values range from 1.0 (early layers) to 1000.0 (deep layers). Different fitting methods (e.g., affine maps, per-head fits) yield different recovery numbers — the values reported here are for the residual-update ridge method.*
 
 *If you want to check our work, the three most surprising claims to verify: (1) PR = 2.3 at layer 16, (2) R² = 0.997 with 54% CE recovery at layer 6, (3) cosine(update, residual) = −0.73 at layer 35. The code is straightforward — SVD, Jacobian finite differences, ridge regression. No exotic tooling required.*
 

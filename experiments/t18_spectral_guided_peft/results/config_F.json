@@ -1,0 +1,22 @@
+{
+  "config": "F",
+  "description": "Skip bottleneck L15-24",
+  "trainable_params": 23855104,
+  "total_params": 4046323200,
+  "train_loss": 1.3108,
+  "train_time_s": 125.0,
+  "gsm8k": {
+    "accuracy": 0.93,
+    "correct": 186,
+    "total": 200
+  },
+  "math500": {
+    "accuracy": 0.79,
+    "correct": 158,
+    "total": 200
+  },
+  "calibration": {
+    "perplexity": 3.5593561595714394,
+    "avg_loss": 1.2696
+  }
+}
