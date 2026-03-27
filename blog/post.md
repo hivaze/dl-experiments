@@ -33,7 +33,13 @@ Before diving into the experiments, a brief orientation on the model I dissected
 | **Position encoding** | RoPE (Rotary Position Embedding) |
 | **Embedding** | Tied — the same 151,936 × 2560 matrix serves as both input embedding and output (LM) head |
 
-Each layer reads from and writes back to a shared **residual stream** — the running sum of all previous layers' outputs plus the original token embedding. When this post refers to "the hidden state at layer $\ell$," it means that cumulative sum after $\ell$ layers have contributed.
+Each layer reads from and writes back to a shared **residual stream** — the running sum of all previous layers' outputs plus the original token embedding. When this post refers to "the hidden state at layer $\ell$," it means that cumulative sum after $\ell$ layers have contributed. Concretely, each layer computes:
+
+$$h' = h_\ell + W_O \cdot \text{GQA}(W_Q \hat{h}, W_K \hat{h}, W_V \hat{h}) \quad \text{where} \quad \hat{h} = \text{RMSNorm}(h_\ell)$$
+
+$$h_{\ell+1} = h' + W_{\text{down}} \left( \text{SiLU}(W_{\text{gate}} \hat{h}') \odot W_{\text{up}} \hat{h}' \right) \quad \text{where} \quad \hat{h}' = \text{RMSNorm}(h')$$
+
+The first line is the attention sub-block: normalize, project to queries/keys/values, apply grouped-query attention, project back. The second is the SwiGLU MLP: normalize, project up through two parallel paths (one gated by SiLU), element-wise multiply, project back down. Both write their output back into the residual stream via addition — every layer is a small perturbation on the running sum.
 
 The architecture is completely homogeneous: all 36 layers have the same structure, the same dimensions, and the same parameter count (~101M each). Nothing in the blueprint distinguishes layer 0 from layer 35. As I'll show, the *learned weights* tell a very different story.
 
