@@ -187,6 +187,8 @@ $$\text{CE Recovery} = 1 - \frac{\text{loss}(\text{linear replacement}) - \text{
 
 100% means the linear map perfectly reproduces the layer's downstream effect. 0% means it's no better than deleting the layer entirely.
 
+To measure how well each linear map fits the activations it was trained on, I report **R²** (coefficient of determination) — the fraction of variance in the layer's actual output that the linear map explains. R² = 1.0 means a perfect fit; R² = 0.0 means the map predicts nothing beyond the mean. The natural assumption is that a high R² (good fit) implies high CE recovery (good replacement). As you'll see, this assumption is spectacularly wrong.
+
 ![The Linearization Paradox](images/fig2_paradox.png)
 *Figure 4. Each dot is one of the 36 layers, plotted by how well a linear map fits its activations (x-axis, R²) vs how well that map actually works when plugged into the model (y-axis, CE recovery). The expected diagonal relationship doesn't hold. Layer 6 (R² = 0.997, recovery = 54%) is the poster child for the paradox — nearly perfect fit, mediocre replacement.*
 
@@ -211,7 +213,7 @@ Layers 11 and 15–18 have a gap ratio ≥ 1.0 — they are **more nonlinear alo
 
 And then error amplification through depth makes it worse: a 13% error at layer 16 propagates through 19 subsequent layers, along directions that downstream layers are tuned to be sensitive to. Small in norm, large in informational content.
 
-A quantization experiment (below) provides direct empirical confirmation: the linearity gap correlates with quantization sensitivity at $\rho$ = 0.68 (p < 0.0001), rising to $\rho$ = 0.71 for the MLP component specifically. Layers the gap flags as "nonlinear" are precisely the ones that break under aggressive quantization — and layers it flags as "linear" survive. The linearization paradox isn't an artifact of the replacement method; it shows up in a completely independent perturbation type.
+A quantization experiment (below) provides direct empirical confirmation: the linearity gap correlates with quantization sensitivity at $\rho = 0.68$ ($p < 0.0001$), rising to $\rho = 0.71$ for the MLP component specifically. Layers the gap flags as "nonlinear" are precisely the ones that break under aggressive quantization — and layers it flags as "linear" survive. The linearization paradox isn't an artifact of the replacement method; it shows up in a completely independent perturbation type.
 
 ---
 
@@ -304,9 +306,9 @@ The transformer isn't 36 interchangeable layers. It's three functional modules w
 A fourth experiment — per-layer quantization sensitivity — provides independent confirmation from a completely different perturbation type. Instead of replacing layers with linear maps, I quantized each layer's weights individually to 2-bit precision and measured perplexity impact:
 
 ![Linearity Gap Predicts Quantization Sensitivity](images/fig10_quant_sensitivity.png)
-*Figure 10. The linearity gap (red line, left axis) and 2-bit quantization sensitivity (blue bars, right axis, log scale) track each other across depth ($\rho$ = 0.68, p < 0.0001). Early layers (L0–3) are catastrophically sensitive — quantizing layer 2 alone increases perplexity by 3,828. Mid-layers (L8–20) absorb even 2-bit quantization with less than 1 PPL impact. Phase bands match those identified independently by the geometry and spectral experiments.*
+*Figure 10. The linearity gap (red line, left axis) and 2-bit quantization sensitivity (blue bars, right axis, log scale) track each other across depth ($\rho = 0.68$, $p < 0.0001$). Early layers (L0–3) are catastrophically sensitive — quantizing layer 2 alone increases perplexity by 3,828. Mid-layers (L8–20) absorb even 2-bit quantization with less than 1 PPL impact. Phase bands match those identified independently by the geometry and spectral experiments.*
 
-The pattern is striking: layers 0–3 are catastrophically sensitive (quantizing layer 2 alone to 2-bit increases perplexity by 3,828), while the entire mid-depth range (layers 8–20) absorbs 2-bit quantization with less than 1 PPL impact. The sensitivity profile correlates strongly with the linearity gap ($\rho$ = 0.68) — layers that are more nonlinear are also harder to quantize — with a mild late-layer uptick at layer 35 (+6 PPL). The early-layer vulnerability makes geometric sense: errors at layer 2 propagate through 34 subsequent layers, while errors at layer 20 only traverse 16.
+The pattern is striking: layers 0–3 are catastrophically sensitive (quantizing layer 2 alone to 2-bit increases perplexity by 3,828), while the entire mid-depth range (layers 8–20) absorbs 2-bit quantization with less than 1 PPL impact. The sensitivity profile correlates strongly with the linearity gap ($\rho = 0.68$) — layers that are more nonlinear are also harder to quantize — with a mild late-layer uptick at layer 35 (+6 PPL). The early-layer vulnerability makes geometric sense: errors at layer 2 propagate through 34 subsequent layers, while errors at layer 20 only traverse 16.
 
 A follow-up LoRA experiment reinforces this further: adapting only the output preparation phase (L25–35) with 10M parameters matches all-layer adaptation (33M parameters) on both in-distribution and OOD benchmarks, while skipping the bottleneck phase entirely yields the best in-distribution gains. The phases aren't just geometric curiosities — they predict where adaptation and compression are effective.
 
@@ -367,11 +369,11 @@ The practical recipe is simple: **4-bit quantization is essentially lossless for
 Somewhat counterintuitively, the data shows that sophisticated mixed-precision schemes guided by spectral or linearity metrics *fail catastrophically* compared to a simple heuristic:
 
 ![Mixed-Precision Recipes](images/fig12_mixed_precision.png)
-*Figure 12. All recipes target ~4-bit average. The spectral-informed recipe (allocating fewer bits to low-rank layers) causes catastrophic failure because it assigns 2-bit to early layers — the most vulnerable ones. Simply giving layer 35 one extra bit ($\Delta$PPL = +0.36) beats every sophisticated strategy at the same bit budget.*
+*Figure 12. All recipes target ~4-bit average. The spectral-informed recipe (allocating fewer bits to low-rank layers) causes catastrophic failure because it assigns 2-bit to early layers — the most vulnerable ones. Simply giving layer 35 one extra bit ($\Delta\text{PPL} = +0.36$) beats every sophisticated strategy at the same bit budget.*
 
 The spectral recipe fails because it confuses **low rank** with **safe to compress**. Early layers have the lowest spectral rank *and* the highest quantization sensitivity — they perform simple but critical embedding projection whose errors compound through all subsequent layers. The rank structure is useful for understanding *what* each matrix does (routing vs content), but not for predicting *where* quantization will hurt.
 
-For deployment: use bitsandbytes NF4 (PPL within 0.1 of BF16), or if you need fine-grained control, give the final layer extra precision — even one additional bit on layer 35 reduces the quality penalty by 27% ($\Delta$PPL +0.36 vs +0.49 for uniform 4-bit). The per-layer sensitivity data suggests early layers (0–3) and layer 35 would benefit from higher precision if the bit budget allows, but don't bother with per-matrix mixed precision — it adds complexity without benefit.
+For deployment: use bitsandbytes NF4 (PPL within 0.1 of BF16), or if you need fine-grained control, give the final layer extra precision — even one additional bit on layer 35 reduces the quality penalty by 27% ($\Delta\text{PPL} = +0.36$ vs $+0.49$ for uniform 4-bit). The per-layer sensitivity data suggests early layers (0–3) and layer 35 would benefit from higher precision if the bit budget allows, but don't bother with per-matrix mixed precision — it adds complexity without benefit.
 
 ---
 
