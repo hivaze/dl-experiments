@@ -1,0 +1,38 @@
+{
+  "model": "Qwen/Qwen3-4B-Instruct-2507",
+  "device": "cuda:0",
+  "seed": 42,
+  "eval_tokens": 4096,
+  "num_layers": 36,
+  "bf16_memory_gb": 8.044955136,
+  "baseline_ppl": 9.251679420471191,
+  "total_time_s": 719.3294613361359,
+  "phase_times_s": {
+    "phase1": 26.13596200942993,
+    "phase1b": 35.00162076950073,
+    "phase2": 647.4144449234009,
+    "phase3": 1.4257729053497314
+  },
+  "key_findings": {
+    "most_sensitive_layers_2bit": [
+      2,
+      1,
+      3,
+      0,
+      4
+    ],
+    "least_sensitive_layers_2bit": [
+      9,
+      20,
+      8,
+      26,
+      10
+    ],
+    "most_sensitive_matrix_type": "gate_proj",
+    "least_sensitive_matrix_type": "q_proj",
+    "best_recipe": [
+      "first_last_protected",
+      0.3594017028808594
+    ]
+  }
+}

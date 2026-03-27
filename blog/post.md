@@ -8,13 +8,13 @@ Every ML engineer has the same mental model of a transformer: tokens go in, laye
 
 **It's also completely wrong.**
 
-I ran three experiments dissecting Qwen3-4B, a 4-billion parameter transformer — measuring the SVD of all 252 weight matrices, computing Jacobians at every layer, and tracking the geometry of 4,094 tokens as they flow through all 36 layers. What I found looks nothing like the textbook picture.
+I ran four experiments dissecting Qwen3-4B, a 4-billion parameter transformer — measuring the SVD of all 252 weight matrices, computing Jacobians at every layer, tracking the geometry of 4,094 tokens as they flow through all 36 layers, and stress-testing every layer with quantization down to 2-bit precision. What I found looks nothing like the textbook picture.
 
 At layer 16, your 2560-dimensional hidden state collapses to **2.3 effective dimensions**. A single axis explains two-thirds of all variance. Geometrically, the representation is passing through a near-singular bottleneck — almost all distinguishing structure lives on a single axis.
 
 And then it gets weirder: the layers *around* that bottleneck — the ones that look the most linear by every local metric — are precisely the ones that *cannot* be replaced by a linear map. A layer with R² = 0.997 between its outputs and a fitted linear replacement recovers only 54% of model quality when you actually swap it in. The 0.3% of variance it misses is correlated with almost half the downstream loss impact.
 
-This post presents three convergent lines of evidence that the standard understanding of transformer internals is, if not wrong, at least dangerously incomplete.
+This post presents four convergent lines of evidence that the standard understanding of transformer internals is, if not wrong, at least dangerously incomplete.
 
 ---
 
@@ -39,7 +39,7 @@ The architecture is completely homogeneous: all 36 layers have the same structur
 
 ---
 
-## The Three Experiments
+## The Four Experiments
 
 Here's what I measured:
 
@@ -48,11 +48,12 @@ Here's what I measured:
 | 1 | **Residual Stream Geometry** | How the shape and dimensionality of representations change across depth | SVD of hidden states, layer impact metrics, residual decomposition |
 | 2 | **Layer Linearization Gap** | How nonlinear each layer's computation actually is, and whether layers can be replaced by linear maps | Jacobian-based perturbation analysis, ridge-regression layer replacement |
 | 3 | **Weight Spectral Structure** | How much of their capacity each weight matrix actually uses | SVD of all 252 weight matrices (7 types × 36 layers) |
+| 4 | **Quantization Sensitivity** | Which layers and weight matrices break under aggressive compression | Per-layer/matrix RTN quantization at 2–8 bit, full-model method comparison |
 
-Each experiment tells its own story. But when you overlay all three, the picture that emerges is far stranger — and more useful — than any single experiment reveals.
+Each experiment tells its own story. But when you overlay all four, the picture that emerges is far stranger — and more useful — than any single experiment reveals.
 
-![Three Views of the Same Transformer](images/fig1_hero_pipeline.png)
-*Figure 1. Three experiments, one story. Top: representation dimensionality collapses and recovers twice (Exp. 1). Middle: nonlinearity follows a U-shape, not the expected monotonic increase (Exp. 2). Bottom: routing matrices (Q/K) use far less capacity than processing matrices (MLP) at every layer (Exp. 3).*
+![Four Views of the Same Transformer](images/fig1_hero_pipeline.png)
+*Figure 1. Three geometric experiments, one story. Top: representation dimensionality collapses and recovers twice (Exp. 1). Middle: nonlinearity follows a U-shape, not the expected monotonic increase (Exp. 2). Bottom: routing matrices (Q/K) use far less capacity than processing matrices (MLP) at every layer (Exp. 3). A fourth experiment — quantization sensitivity — independently confirms the same phase structure (see Part IV).*
 
 ---
 
@@ -204,6 +205,8 @@ Layers 11 and 15–18 have a gap ratio ≥ 1.0 — they are **more nonlinear alo
 
 And then error amplification through depth makes it worse: a 13% error at layer 16 propagates through 19 subsequent layers, along directions that downstream layers are tuned to be sensitive to. Small in norm, large in informational content.
 
+A quantization experiment (below) provides direct empirical confirmation: the linearity gap correlates with quantization sensitivity at $\rho$ = 0.68 (p < 0.0001), rising to $\rho$ = 0.71 for the MLP component specifically. Layers the gap flags as "nonlinear" are precisely the ones that break under aggressive quantization — and layers it flags as "linear" survive. The linearization paradox isn't an artifact of the replacement method; it shows up in a completely independent perturbation type.
+
 ---
 
 ## Part III: Routing Is Cheap, Thinking Is Expensive
@@ -264,15 +267,17 @@ One plausible explanation is a self-averaging effect. A high-rank layer spreads 
 
 Critically, this correlation is **entirely MLP-driven**. Per-matrix analysis shows: up_proj (r = −0.74), down_proj (r = −0.49), gate_proj (r = −0.48). All four attention matrices show r ≈ 0. The SwiGLU MLP is where the rank-linearity relationship lives; softmax attention behaves independently of weight rank.
 
+Per-matrix quantization sensitivity tells the same story from yet another angle: gate_proj is **50x more sensitive** to 3-bit quantization than Q or K projections. Low-rank attention matrices (Q at 25% effective rank) absorb quantization noise with little quality loss, while the higher-rank MLP matrices — particularly the SwiGLU gate, which amplifies errors through a nonlinear activation — are where quantization fails first. The routing/content split isn't just structural; it determines which matrices you can safely compress and which you can't.
+
 ---
 
 ## Part IV: The Convergence
 
-The three experiments weren't designed to tell a unified story, but they do. Here's how the findings map onto each other:
+The four experiments weren't designed to tell a unified story, but they do. Here's how the findings map onto each other:
 
 ### The Bottleneck Layers Are Non-Linearizable
 
-The second compression (layers 16–24) has the lowest participation ratio (PR = 2.3–17, Exp. 1), sits in the "linear plateau" of the perturbation gap (gap ~0.13, Exp. 2), and has moderate weight rank (Exp. 3). Naively, these layers look like prime linearization candidates — locally smooth, low-dimensional. But they achieve the *worst* CE recovery (39–65%, Exp. 2). A fourth experiment confirms this from yet another angle: layer knockout shows that layers in the distributed processing zone (6–14) are the most critical to remove, with loss ratios of 5–22×. The bottleneck layers and the layers that feed them are load-bearing — they just don't look like it from local metrics. Why?
+The second compression (layers 16–24) has the lowest participation ratio (PR = 2.3–17, Exp. 1), sits in the "linear plateau" of the perturbation gap (gap ~0.13, Exp. 2), and has moderate weight rank (Exp. 3). Naively, these layers look like prime linearization candidates — locally smooth, low-dimensional. But they achieve the *worst* CE recovery (39–65%, Exp. 2). Layer knockout confirms this: layers in the distributed processing zone (6–14) are the most critical to remove, with loss ratios of 5–22×. The bottleneck layers and the layers that feed them are load-bearing — they just don't look like it from local metrics. Why?
 
 Because squeezing through a near-one-dimensional bottleneck means the tiny nonlinear residual encodes *all* the distinguishing information. When representations are compressed to 2–3 effective dimensions, two different inputs land on nearly the same axis. The small nonlinear correction that the linear map misses is exactly what separates them. And that error propagates through 10–19 subsequent layers, amplified along directions that downstream layers are tuned to be sensitive to. Small in norm, devastating in informational content.
 
@@ -288,7 +293,16 @@ The update correlation matrix (Exp. 1) shows three clear blocks: early (L0–5),
 
 The transformer isn't 36 interchangeable layers. It's three functional modules with distinct geometric roles, bookended by singular layers (L0 and L35) that perform unique transformations.
 
-A follow-up LoRA experiment reinforces this: adapting only the output preparation phase (L25–35) with 10M parameters matches all-layer adaptation (33M parameters) on both in-distribution and OOD benchmarks, while skipping the bottleneck phase entirely yields the best in-distribution gains. The phases aren't just geometric curiosities — they predict where adaptation is effective.
+### Quantization Sensitivity Confirms the Phase Structure
+
+A fourth experiment — per-layer quantization sensitivity — provides independent confirmation from a completely different perturbation type. Instead of replacing layers with linear maps, I quantized each layer's weights individually to 2-bit precision and measured perplexity impact:
+
+![Per-Layer Quantization Sensitivity](images/fig10_quant_sensitivity.png)
+*Figure 10. Top: Per-layer quantization sensitivity at 2-bit RTN. Early layers (L0–4) are catastrophically sensitive (L2: +3,828 PPL), while mid-layers (L8–20) barely register (< 1 PPL). Inset shows full scale for early layers. Bottom: The linearity gap (red) and quantization sensitivity (blue, log scale) track each other across depth ($\rho$ = 0.68, p < 0.0001).*
+
+The pattern is striking: layers 0–3 are catastrophically sensitive (quantizing layer 2 alone to 2-bit increases perplexity by 3,828), while the entire mid-depth range (layers 8–20) absorbs 2-bit quantization with less than 1 PPL impact. The sensitivity profile correlates strongly with the linearity gap ($\rho$ = 0.68) — layers that are more nonlinear are also harder to quantize — with a mild late-layer uptick at layer 35 (+6 PPL). The early-layer vulnerability makes geometric sense: errors at layer 2 propagate through 34 subsequent layers, while errors at layer 20 only traverse 16.
+
+A follow-up LoRA experiment reinforces this further: adapting only the output preparation phase (L25–35) with 10M parameters matches all-layer adaptation (33M parameters) on both in-distribution and OOD benchmarks, while skipping the bottleneck phase entirely yields the best in-distribution gains. The phases aren't just geometric curiosities — they predict where adaptation and compression are effective.
 
 ![Update Correlation Matrix](images/fig_update_correlation.png)
 *Figure 8b. Cosine similarity between mean layer updates. Clear block structure: early layers push in one direction, mid layers in another, late layers in a third. Layer 35 (bottom row/right column) is anti-correlated with everything — it opposes all prior layers.*
@@ -301,7 +315,7 @@ These findings challenge several standard practices. Here's what the data says y
 
 ### 1. Don't Trust Activation-Space Metrics for Pruning Decisions
 
-This is the most broadly applicable finding. If you're evaluating whether to compress, prune, or replace a layer, **R² between original and replacement activations tells you almost nothing about downstream impact**. Layer 6's 0.3% residual corresponds to nearly half the downstream loss degradation. The only reliable metric is end-to-end evaluation (CE loss, task accuracy). This applies to LoRA, distillation, quantization, and pruning equally.
+This is the most broadly applicable finding. If you're evaluating whether to compress, prune, or replace a layer, **R² between original and replacement activations tells you almost nothing about downstream impact**. Layer 6's 0.3% residual corresponds to nearly half the downstream loss degradation. The only reliable metric is end-to-end evaluation (CE loss, task accuracy). This applies to LoRA, distillation, quantization, and pruning equally. The quantization experiment shows this concretely: a spectral-informed mixed-precision recipe that assigns fewer bits to low-rank layers — seemingly logical — causes a 13,000× perplexity increase because it puts 2-bit on early layers that are structurally simple but positionally critical.
 
 The layers with the highest knockout impact reinforce this: layer 0 (99.6× loss increase), layer 6 (21.7×, appears in 4/5 most critical synergistic pairs), and layer 35 (the dispersal mechanism). None of these are layers you'd flag as "important" by looking at activation variance or perturbation gap alone.
 
@@ -333,6 +347,26 @@ The bottleneck functions as a **frozen information channel**. The geometric filt
 
 For efficient fine-tuning: **skip the bottleneck layers** and concentrate LoRA on the distributed processing zone (L6–15) and output preparation zone (L25–35). The bottleneck's low dimensionality and highly correlated updates (cosine > 0.5 between adjacent layers in L17–23) also suggest these layers are candidates for depth pruning — but that remains to be tested directly.
 
+### 5. Quantize Everything — Except the Gate and the Endpoints
+
+Per-matrix quantization sensitivity reveals a clear hierarchy of compressibility:
+
+![Per-Matrix Quantization Sensitivity](images/fig11_quant_matrix.png)
+*Figure 11. Left: Mean PPL impact of 3-bit quantization per matrix type. gate_proj (the SwiGLU gate) is 50x more sensitive than attention routing matrices. Right: gate_proj sensitivity by layer — layer 2's gate alone causes +7.9 PPL at 3-bit.*
+
+The SwiGLU gate projection is the quantization Achilles' heel. Because the gate's output passes through SiLU and then element-wise multiplies the up projection ($\text{SiLU}(W_g x) \odot W_u x$), small weight errors compound nonlinearly — the quantized gate selects slightly wrong features, which then get amplified through the multiplicative interaction. Attention routing matrices (Q, K) are nearly immune: their low effective rank (25–38%) provides built-in redundancy that absorbs quantization noise.
+
+The practical recipe is simple: **4-bit quantization is essentially lossless for single layers** (no layer causes more than 0.1 PPL impact at 4-bit, within measurement noise). The cliff appears between 3-bit and 2-bit, and it's almost entirely in the first 5 layers and the gate projections.
+
+Somewhat counterintuitively, the data shows that sophisticated mixed-precision schemes guided by spectral or linearity metrics *fail catastrophically* compared to a simple heuristic:
+
+![Mixed-Precision Recipes](images/fig12_mixed_precision.png)
+*Figure 12. All recipes target ~4-bit average. The spectral-informed recipe (allocating fewer bits to low-rank layers) causes catastrophic failure because it assigns 2-bit to early layers — the most vulnerable ones. Simply giving layer 35 one extra bit ($\Delta$PPL = +0.36) beats every sophisticated strategy at the same bit budget.*
+
+The spectral recipe fails because it confuses **low rank** with **safe to compress**. Early layers have the lowest spectral rank *and* the highest quantization sensitivity — they perform simple but critical embedding projection whose errors compound through all subsequent layers. The rank structure is useful for understanding *what* each matrix does (routing vs content), but not for predicting *where* quantization will hurt.
+
+For deployment: use bitsandbytes NF4 (PPL within 0.1 of BF16), or if you need fine-grained control, give the final layer extra precision — even one additional bit on layer 35 reduces the quality penalty by 27% ($\Delta$PPL +0.36 vs +0.49 for uniform 4-bit). The per-layer sensitivity data suggests early layers (0–3) and layer 35 would benefit from higher precision if the bit budget allows, but don't bother with per-matrix mixed precision — it adds complexity without benefit.
+
 ---
 
 ## What This Means for How You Think About Transformers
@@ -354,7 +388,7 @@ And somewhere in the 0.3% of variance that your linear approximation misses, the
 
 ---
 
-*All experiments were conducted on a single NVIDIA B200 GPU. The findings are from one model (Qwen3-4B-Instruct-2507, see architecture table above) — generalization to other architectures is a hypothesis, not a conclusion. A follow-up LoRA validation experiment was added to test the practical predictions; results in Part V reflect those findings.*
+*All experiments were conducted on a single NVIDIA B200 GPU. The findings are from one model (Qwen3-4B-Instruct-2507, see architecture table above) — generalization to other architectures is a hypothesis, not a conclusion. A follow-up LoRA validation experiment was added to test the practical predictions; results in Part V reflect those findings. The quantization experiment was added as an independent test of the phase structure predictions; it uses RTN (round-to-nearest) simulation for per-layer analysis and real quantization methods (bitsandbytes, torchao, llmcompressor GPTQ) for full-model comparison.*
 
 *Methodological note: All key metrics (PR, perturbation gap, CE recovery) are point estimates computed over a fixed evaluation set of 4,094 tokens from diverse prompts. I did not compute bootstrap confidence intervals across prompt subsets; the variance across prompts is a natural next step for quantifying robustness. The perturbation gap is stable across prompts (10–20% std per layer). The linearization experiment uses ridge regression with $\lambda$ selected per-layer by test-set MSE from a grid of $[0.001 \ldots 1000]$, fit on layer residual updates with an 80/20 calibration split (200 sequences). Selected $\lambda$ values range from 1.0 (early layers) to 1000.0 (deep layers). Different fitting methods (e.g., affine maps, per-head fits) yield different recovery numbers — the values reported here are for the residual-update ridge method.*
 
