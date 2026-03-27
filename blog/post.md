@@ -1,14 +1,14 @@
 # Transformers Don't Compute — They Compress, Explode, and Self-Destruct
 
-*What three experiments inside a 4B-parameter model reveal about the hidden geometry of transformer inference*
+*A layer-by-layer dissection of what actually happens inside a 4B-parameter transformer*
 
 ---
 
-Every ML engineer has the same mental model of a transformer: tokens go in, layers refine them one at a time, logits come out. Each layer does "a little bit of attention" and "a little bit of MLP," and after 36 of these gentle refinements, you get a prediction. It's clean, it's symmetric, it's intuitive.
+Every ML engineer has the same mental model of a transformer: tokens go in, layers refine them one at a time, logits come out. Each layer does "a little bit of attention" and "a little bit of MLP," and after dozens of these gentle refinements, you get a prediction. It's clean, it's symmetric, it's intuitive.
 
 **It's also completely wrong.**
 
-We spent three experiments dissecting a 4-billion parameter transformer ([Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)) — measuring the SVD of all 252 weight matrices, computing Jacobians at every layer, and tracking the geometry of 4,094 tokens as they flow through 36 layers of computation. What we found looks nothing like the textbook picture.
+I ran three experiments dissecting Qwen3-4B, a 4-billion parameter transformer — measuring the SVD of all 252 weight matrices, computing Jacobians at every layer, and tracking the geometry of 4,094 tokens as they flow through all 36 layers. What I found looks nothing like the textbook picture.
 
 At layer 16, your 2560-dimensional hidden state collapses to **2.3 effective dimensions**. A single axis explains two-thirds of all variance. Geometrically, the representation is passing through a near-singular bottleneck — almost all distinguishing structure lives on a single axis.
 
@@ -18,9 +18,30 @@ This post presents three convergent lines of evidence that the standard understa
 
 ---
 
+## The Model Under the Microscope
+
+Before diving into the experiments, a brief orientation on the model I dissected. [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) is a 4-billion parameter decoder-only transformer:
+
+| Component | Detail |
+|-----------|--------|
+| **Decoder layers** | 36, all identical in structure |
+| **Hidden dimension** | 2560 — every token is a 2560-d vector throughout the network |
+| **Attention** | Grouped Query Attention (GQA): 32 query heads, 8 key/value heads, head dim 128 |
+| **MLP** | SwiGLU: gate and up projections (2560 → 9728), down projection (9728 → 2560), SiLU activation |
+| **Normalization** | RMSNorm before each sub-block |
+| **Weight matrices per layer** | 7: Q, K, V, O (attention) + gate, up, down (MLP) — **252 total** |
+| **Position encoding** | RoPE (Rotary Position Embedding) |
+| **Embedding** | Tied — the same 151,936 × 2560 matrix serves as both input embedding and output (LM) head |
+
+Each layer reads from and writes back to a shared **residual stream** — the running sum of all previous layers' outputs plus the original token embedding. When this post refers to "the hidden state at layer $\ell$," it means that cumulative sum after $\ell$ layers have contributed.
+
+The architecture is completely homogeneous: all 36 layers have the same structure, the same dimensions, and the same parameter count (~101M each). Nothing in the blueprint distinguishes layer 0 from layer 35. As I'll show, the *learned weights* tell a very different story.
+
+---
+
 ## The Three Experiments
 
-Before diving in, here's what we measured:
+Here's what I measured:
 
 | # | Experiment | What it measures | Method |
 |---|---|---|---|
@@ -41,7 +62,7 @@ The standard picture says representations are gradually refined across layers. T
 
 ### Background: Singular Value Decomposition (SVD)
 
-Before diving into the measurements, a quick primer on the key mathematical tool. If you're comfortable with SVD, skip to [Participation Ratio](#measuring-dimensionality-participation-ratio).
+First, a quick primer on the key mathematical tool. If you're comfortable with SVD, skip to [Participation Ratio](#measuring-dimensionality-participation-ratio).
 
 Any matrix $X$ can be decomposed into three factors:
 
@@ -49,13 +70,13 @@ $$X = U \Sigma V^\top$$
 
 Think of this as breaking a transformation into three steps: (1) rotate inputs to align with the "natural axes" of the transformation ($V^\top$), (2) stretch or shrink along each axis by an amount $\sigma_i$ (the **singular values**, collected in the diagonal matrix $\Sigma$), and (3) rotate to the output space ($U$).
 
-**Why it matters here:** When we stack all token representations at a given layer into a matrix $X$ (rows = tokens, columns = hidden dimensions), the SVD tells us which directions in the 2560-dimensional space actually carry information. A large singular value means many tokens vary strongly along that direction — it's an "active" axis. A near-zero singular value means nothing interesting happens along that direction — the model isn't using that dimension at this layer.
+**Why it matters here:** Stack all token representations at a given layer into a matrix $X$ (rows = tokens, columns = hidden dimensions), and the SVD reveals which directions in the 2560-dimensional space actually carry information. A large singular value means many tokens vary strongly along that direction — it's an "active" axis. A near-zero singular value means nothing interesting happens along that direction — the model isn't using that dimension at this layer.
 
 The singular values are always non-negative and conventionally sorted largest-first: $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n \ge 0$. Their squares $\sigma_i^2$ are proportional to the variance explained by each direction — directly analogous to eigenvalues in PCA. (In fact, PCA of centered data is just SVD under the hood.)
 
 ### Measuring Dimensionality: Participation Ratio
 
-To quantify "how many dimensions a representation actually uses," we compute the **participation ratio** (PR). Take all token representations at a given layer, stack them into a matrix, and compute the SVD. The singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n$ tell you how much variance lies along each direction.
+To quantify "how many dimensions a representation actually uses," I compute the **participation ratio** (PR). Take all token representations at a given layer, stack them into a matrix, and compute the SVD. The singular values $\sigma_1 \ge \sigma_2 \ge \cdots \ge \sigma_n$ tell you how much variance lies along each direction.
 
 Turn these into a probability distribution by normalizing the squared singular values:
 
@@ -67,7 +88,7 @@ $$\text{PR} = \frac{1}{\sum_i p_i^2}$$
 
 **Intuition:** If all variance sits on one axis ($p_1 = 1$, everything else $= 0$): PR $= 1 / 1^2 = 1$. If variance is spread equally across $k$ axes ($p_i = 1/k$ each): PR $= 1 / (k \cdot (1/k)^2) = k$. In between, PR smoothly interpolates — it tells you the "effective number of active dimensions" without requiring you to pick an arbitrary cutoff like "keep components explaining 95% of variance."
 
-### What We Found
+### What I Found
 
 ![The Dimensionality Bottleneck](images/fig3_bottleneck.png)
 *Figure 2. Left: Participation ratio across depth, with two bottleneck regions highlighted in red. At layer 16, PR = 2.3 — nearly one-dimensional. Right: each layer's signed contribution to the final representation. Green bars = reinforcing updates (aligned with residual), red = opposing. Layer 35 (purple) contributes 31.8% of the final norm while opposing the residual (cos = −0.73). Layers 0–15 together contribute less than 2%.*
@@ -83,14 +104,14 @@ The hidden dimension is 2560. Here's how many dimensions the model *actually use
 | **Output Preparation** | 25–34 | 24–127 | Norms explode from 139 to 571; representations form a tight directional cone |
 | **Dispersal** | 35 | 160 | Layer 35 *actively opposes* the accumulated residual, breaking the cone |
 
-This is not gradual refinement. It's **compress → expand → compress → cannon → fire backwards**.
+This is not gradual refinement. It's **destroy → compress → expand → compress → cannon → fire backwards**.
 
 To see why layer 16 is a "pinhole," look at the actual singular value spectra:
 
 ![Singular Value Spectra](images/fig_sv_spectra.png)
 *Figure 2a. Singular value spectra at three representative layers. Layer 10 (distributed processing) spreads variance across many dimensions — a healthy, high-dimensional representation. Layer 16 (the bottleneck) concentrates 67% of all variance on a single axis. Layer 35 (dispersal) is high-dimensional again but with a different spectral shape. Dashed line shows cumulative variance.*
 
-The two bottlenecks are especially important. At layer 16, the model forces all of its intermediate computation through just 2.3 effective dimensions. Whatever features survive this compression are the only ones available to the remaining 20 layers. This has profound consequences for fine-tuning, pruning, and any technique that freezes part of the network — as we'll see in Part V.
+The two bottlenecks are especially important. At layer 16, the model forces all of its intermediate computation through just 2.3 effective dimensions. Whatever features survive this compression are the only ones available to the remaining 19 layers. This has profound consequences for fine-tuning, pruning, and any technique that freezes part of the network — as I'll show in Part V.
 
 ### The Embedding Is Erased by Layer 5
 
@@ -109,7 +130,7 @@ Layer 35 isn't refining. Its geometric effect is a dispersal of the anisotropic 
 
 ### Where the Final Prediction Actually Comes From
 
-The residual stream is a running sum: $\mathbf{h}^{(L)} = \mathbf{h}^{(\text{emb})} + \sum_\ell \boldsymbol{\delta}_\ell$. We can project each layer's update onto the final direction to see who actually contributes:
+The residual stream is a running sum: $\mathbf{h}^{(L)} = \mathbf{h}^{(\text{emb})} + \sum_\ell \boldsymbol{\delta}_\ell$. Projecting each layer's update onto the final direction reveals who actually contributes:
 
 - **Layers 0–15**: less than 2% combined
 - **Layers 25–35**: over 90% of the final representation
@@ -137,7 +158,7 @@ The **perturbation gap** measures how well this approximation holds:
 
 $$\text{gap} = \frac{\lVert \text{actual change} - \text{linear prediction} \rVert}{\lVert \text{actual change} \rVert}$$
 
-A gap of 0.13 means the nonlinear residual is only 13% the size of the actual displacement — 87% of the layer's behavior is captured by the first-order (linear) term. In practice, we don't form the full 2560 × 2560 Jacobian. We only need its product with specific perturbation directions, computed via central finite differences: perturb the input in direction $\hat{\mathbf{d}}$, observe the output change, and compare against the linear prediction.
+A gap of 0.13 means the nonlinear residual is only 13% the size of the actual displacement — 87% of the layer's behavior is captured by the first-order (linear) term. In practice, I don't form the full 2560 × 2560 Jacobian — only its product with specific perturbation directions is needed, computed via central finite differences: perturb the input in direction $\hat{\mathbf{d}}$, observe the output change, and compare against the linear prediction.
 
 ### The U-Shape Nobody Expected
 
@@ -153,7 +174,7 @@ Nonlinearity follows a **U-shape**, not a monotonic increase. The middle of the 
 
 ### R² = 0.997 and It's Useless
 
-This is the experiment's most important result. We tested whether each layer could be replaced by a single learned linear map. For each layer, we collected input-output activation pairs on a calibration set of 200 sequences, fit a ridge-regression map ($\lambda$ selected per-layer by test-set MSE from a grid of $[0.001, 0.01, \ldots, 1000]$) on 80% of the data, and evaluated on the held-out 20%. The replacement map is fit to predict each layer's *residual update* (not total output), then plugged back into the full model for end-to-end evaluation. The metric is **CE recovery** — what fraction of the quality lost by removing the layer does the linear replacement restore:
+This is the experiment's most important result. I tested whether each layer could be replaced by a single learned linear map. For each layer, I collected input-output activation pairs on a calibration set of 200 sequences, fit a ridge-regression map ($\lambda$ selected per-layer by test-set MSE from a grid of $[0.001, 0.01, \ldots, 1000]$) on 80% of the data, and evaluated on the held-out 20%. The replacement map is fit to predict each layer's *residual update* (not total output), then plugged back into the full model for end-to-end evaluation. The metric is **CE recovery** — what fraction of the quality lost by removing the layer does the linear replacement restore:
 
 $$\text{CE Recovery} = 1 - \frac{\text{loss}(\text{linear replacement}) - \text{loss}(\text{original})}{\text{loss}(\text{layer removed}) - \text{loss}(\text{original})}$$
 
@@ -174,7 +195,7 @@ Only **12 of 36 layers** achieve ≥73% CE recovery. The middle-to-late layers (
 
 ### Why "Locally Linear" Doesn't Mean "Globally Replaceable"
 
-The hidden state manifold has an effective dimensionality of only ~18 (out of 2560). Random perturbation directions are almost entirely off-manifold. When we measure the perturbation gap along *actual data directions* (via PCA), a different picture emerges:
+The hidden state manifold has an effective dimensionality of only ~18 (out of 2560). Random perturbation directions are almost entirely off-manifold. When I measure the perturbation gap along *actual data directions* (via PCA), a different picture emerges:
 
 ![PCA-Aligned Gap](images/fig_pca_gap.png)
 *Figure 5. Left: on-manifold (green) vs off-manifold (red) nonlinearity across depth. Center: their ratio — values above 1.0 mean the model is more nonlinear along data-relevant directions. Right: the data manifold is only ~18-dimensional everywhere.*
@@ -187,17 +208,17 @@ And then error amplification through depth makes it worse: a 13% error at layer 
 
 ## Part III: Routing Is Cheap, Thinking Is Expensive
 
-The third experiment decomposes the model from a different angle: instead of looking at what flows *through* the layers, we look at the layers' *weight matrices themselves*. Every transformer layer has 7 weight matrices: Q, K, V, O projections in attention, and gate, up, down projections in the MLP. We compute the SVD of all 252 matrices and measure their effective rank.
+The third experiment decomposes the model from a different angle: instead of looking at what flows *through* the layers, I look at the layers' *weight matrices themselves*. Every transformer layer has 7 weight matrices: Q, K, V, O projections in attention, and gate, up, down projections in the MLP. I compute the SVD of all 252 matrices and measure their effective rank.
 
 ### The SVD of a Weight Matrix
 
-We introduced SVD in Part I for analyzing *data* (token representations). The same decomposition applies to *weights* — but the interpretation shifts.
+I introduced SVD in Part I for analyzing *data* (token representations). The same decomposition applies to *weights* — but the interpretation shifts.
 
 For any weight matrix $W \in \mathbb{R}^{m \times n}$, the SVD gives:
 
 $$W = U \cdot \text{diag}(\sigma_1, \ldots, \sigma_n) \cdot V^\top$$
 
-When applied to data, singular values told us "how much variance lies along each direction." When applied to a weight matrix, each singular value $\sigma_i$ tells us "how strongly this matrix amplifies signals along one independent channel." A weight matrix with a few large singular values and many near-zero ones is effectively low-rank — it maps inputs through a narrow bottleneck regardless of what data you feed it.
+When applied to data, singular values told you "how much variance lies along each direction." When applied to a weight matrix, each singular value $\sigma_i$ tells you "how strongly this matrix amplifies signals along one independent channel." A weight matrix with a few large singular values and many near-zero ones is effectively low-rank — it maps inputs through a narrow bottleneck regardless of what data you feed it.
 
 The **effective rank ratio** applies the same participation ratio formula to the singular values of $W$, then divides by the maximum possible rank (the smaller of $m$ and $n$). A ratio of 0.25 means the matrix is using only 25% of its theoretical capacity — the remaining 75% of its "channels" are barely active.
 
@@ -218,7 +239,7 @@ The results reveal a clean functional hierarchy:
 
 **Q/K routing is low-rank in every single layer (36/36)**. "Where to attend" is a much simpler computation than "what to extract." This has a direct practical consequence: Q/K matrices tolerate the most aggressive compression. With 32 query heads at only 25% effective rank, there's massive redundancy in the routing computation — especially in early layers where Q rank ratio drops to 0.23.
 
-To put this in context, we compared each matrix type against its Marchenko-Pastur baseline — the effective rank ratio expected from a random (untrained) matrix of the same shape. All trained matrices fall below their baselines, but the degree of compression varies dramatically:
+To put this in context, I compared each matrix type against its Marchenko-Pastur baseline — the effective rank ratio expected from a random (untrained) matrix of the same shape. All trained matrices fall below their baselines, but the degree of compression varies dramatically:
 
 | Matrix | Trained Rank Ratio | MP Baseline | Trained / Baseline |
 |--------|-------------------|-------------|-------------------|
@@ -232,7 +253,7 @@ Training compresses routing (Q/K) far more than content processing (V/MLP). Q us
 
 ### The Counterintuitive Correlation: Higher Rank → More Linear
 
-When we correlate weight effective rank (Exp. 3) with the perturbation gap (Exp. 2), the naive expectation is: higher rank = more complex computation = more nonlinear. The data says the opposite:
+Correlating weight effective rank (Exp. 3) with the perturbation gap (Exp. 2), the naive expectation is: higher rank = more complex computation = more nonlinear. The data says the opposite:
 
 ![Higher Rank = More Linear](images/fig5_rank_vs_linearity.png)
 *Figure 7. Each layer plotted by its mean weight effective rank (x-axis) vs perturbation gap (y-axis). The negative correlation (r = −0.43, p = 0.009) means higher-rank layers are more linear, not less.*
@@ -314,7 +335,7 @@ For efficient fine-tuning: **skip the bottleneck layers** and concentrate LoRA o
 
 ---
 
-## What This Means for How We Think About Transformers
+## What This Means for How You Think About Transformers
 
 The standard mental model — 36 identical layers, each refining a little — deserves an update. What actually happens is closer to:
 
@@ -325,18 +346,18 @@ The standard mental model — 36 identical layers, each refining a little — de
 5. **Build** an anisotropic cannon (norms growing superlinearly, all tokens pointing the same way)
 6. **Fire backwards** — actively oppose everything the previous 17 layers built, to create the separation the output head needs
 
-The architecture that emerges from training isn't a smooth pipeline. It's a sequence of radical geometric transformations separated by low-dimensional bottlenecks. Whether these bottlenecks are *functional* — actively discarding irrelevant features, as the information bottleneck principle (Tishby et al., 2000) would predict — or merely a geometric side-effect of training dynamics remains an open question. We measured dimensionality, not mutual information; confirming the information-theoretic interpretation would require measuring $I(X; T)$ and $I(T; Y)$ at each layer, which we did not do. (For the ongoing debate on whether DNNs exhibit information bottleneck compression, see Shwartz-Ziv & Tishby 2017 and Saxe et al. 2018's counterargument that compression depends on activation function choice.) What we can say is that the bottleneck's geometric effect is real and has measurable downstream consequences regardless of its cause.
+The architecture that emerges from training isn't a smooth pipeline. It's a sequence of radical geometric transformations separated by low-dimensional bottlenecks. Whether these bottlenecks are *functional* — actively discarding irrelevant features, as the information bottleneck principle (Tishby et al., 2000) would predict — or merely a geometric side-effect of training dynamics remains an open question. I measured dimensionality, not mutual information; confirming the information-theoretic interpretation would require measuring $I(X; T)$ and $I(T; Y)$ at each layer, which I did not do. (For the ongoing debate on whether DNNs exhibit information bottleneck compression, see Shwartz-Ziv & Tishby 2017 and Saxe et al. 2018's counterargument that compression depends on activation function choice.) What I can say is that the bottleneck's geometric effect is real and has measurable downstream consequences regardless of its cause.
 
-Our findings also connect to recent work in mechanistic interpretability. The "residual stream" framing (Elhage et al., 2021) treats each layer as writing to a shared communication channel — our phase structure shows that what gets written changes character dramatically across depth. The layer-pruning literature (Men et al., 2024; Gromov et al., 2024) has found that middle layers are often removable — our linearization paradox offers a geometric explanation for *why* some layers resist removal despite appearing redundant by local metrics.
+These findings also connect to recent work in mechanistic interpretability. The "residual stream" framing (Elhage et al., 2021) treats each layer as writing to a shared communication channel — the phase structure above shows that what gets written changes character dramatically across depth. The layer-pruning literature (Men et al., 2024; Gromov et al., 2024) has found that middle layers are often removable — the linearization paradox offers a geometric explanation for *why* some layers resist removal despite appearing redundant by local metrics.
 
 And somewhere in the 0.3% of variance that your linear approximation misses, the model is hiding almost half of what it knows.
 
 ---
 
-*All experiments were conducted on Qwen3-4B-Instruct-2507 (36 layers, 2560 hidden dim) running on NVIDIA B200 GPUs. The findings are from a single model family — generalization to other architectures is a hypothesis, not a conclusion. A follow-up LoRA validation experiment was added to test the practical predictions; results in Part V reflect those findings.*
+*All experiments were conducted on a single NVIDIA B200 GPU. The findings are from one model (Qwen3-4B-Instruct-2507, see architecture table above) — generalization to other architectures is a hypothesis, not a conclusion. A follow-up LoRA validation experiment was added to test the practical predictions; results in Part V reflect those findings.*
 
-*Methodological note: All key metrics (PR, perturbation gap, CE recovery) are point estimates computed over a fixed evaluation set of 4,094 tokens from diverse prompts. We did not compute bootstrap confidence intervals across prompt subsets; the variance across prompts is a natural next step for quantifying robustness. The perturbation gap is stable across prompts (10–20% std per layer). The linearization experiment uses ridge regression with $\lambda$ selected per-layer by test-set MSE from a grid of $[0.001 \ldots 1000]$, fit on layer residual updates with an 80/20 calibration split (200 sequences). Selected $\lambda$ values range from 1.0 (early layers) to 1000.0 (deep layers). Different fitting methods (e.g., affine maps, per-head fits) yield different recovery numbers — the values reported here are for the residual-update ridge method.*
+*Methodological note: All key metrics (PR, perturbation gap, CE recovery) are point estimates computed over a fixed evaluation set of 4,094 tokens from diverse prompts. I did not compute bootstrap confidence intervals across prompt subsets; the variance across prompts is a natural next step for quantifying robustness. The perturbation gap is stable across prompts (10–20% std per layer). The linearization experiment uses ridge regression with $\lambda$ selected per-layer by test-set MSE from a grid of $[0.001 \ldots 1000]$, fit on layer residual updates with an 80/20 calibration split (200 sequences). Selected $\lambda$ values range from 1.0 (early layers) to 1000.0 (deep layers). Different fitting methods (e.g., affine maps, per-head fits) yield different recovery numbers — the values reported here are for the residual-update ridge method.*
 
-*If you want to check our work, the three most surprising claims to verify: (1) PR = 2.3 at layer 16, (2) R² = 0.997 with 54% CE recovery at layer 6, (3) cosine(update, residual) = −0.73 at layer 35. The code is straightforward — SVD, Jacobian finite differences, ridge regression. No exotic tooling required.*
+*If you want to check my work, the three most surprising claims to verify: (1) PR = 2.3 at layer 16, (2) R² = 0.997 with 54% CE recovery at layer 6, (3) cosine(update, residual) = −0.73 at layer 35. The code is straightforward — SVD, Jacobian finite differences, ridge regression. No exotic tooling required.*
 
 *Reproduction scripts, full result JSONs, and the code for all other experiments in this research program are available at [github.com/hivaze/dl-experiments](https://github.com/hivaze/dl-experiments).*
