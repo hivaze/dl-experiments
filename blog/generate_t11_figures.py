@@ -161,35 +161,32 @@ print("Saved fig10_quant_sensitivity.png")
 
 # ── Figure 11: Per-Matrix Quantization Sensitivity ──────────────
 
-fig, axes = plt.subplots(1, 2, figsize=(14, 5.5),
+fig, axes = plt.subplots(1, 2, figsize=(14, 6),
                           gridspec_kw={'width_ratios': [1.3, 1]})
 
-# Left: Mean sensitivity by matrix type
+# Left: Mean sensitivity by matrix type (grouped with visual separators)
 ax = axes[0]
 mat_order = ["q_proj", "k_proj", "o_proj", "v_proj", "up_proj", "down_proj", "gate_proj"]
 mat_means = [mat_sens[m].mean() for m in mat_order]
 mat_colors = [C_BLUE, C_BLUE, C_BLUE, C_CYAN, C_GREEN, C_GREEN, C_RED]
-mat_labels_short = ["Q", "K", "O", "V", "up", "down", "gate"]
+mat_labels_short = ["Q  (attn)", "K  (attn)", "O  (attn)", "V  (attn)",
+                     "up  (MLP)", "down  (MLP)", "gate  (MLP)"]
 
 bars = ax.barh(range(len(mat_order)), mat_means, color=mat_colors, alpha=0.85,
                edgecolor='#30363d', linewidth=0.5)
 ax.set_yticks(range(len(mat_order)))
-ax.set_yticklabels(mat_labels_short, fontsize=11)
+ax.set_yticklabels(mat_labels_short, fontsize=10)
 ax.set_xlabel("Mean PPL Δ (3-bit RTN, single matrix)")
 ax.set_title("Per-Matrix Quantization Sensitivity", fontsize=13, fontweight='bold')
 ax.grid(True, axis='x', alpha=0.3)
+# Separator line between attention and MLP groups
+ax.axhline(y=3.5, color='#30363d', ls='--', lw=0.8, alpha=0.7)
 
 # Add value labels
 for i, (bar, val) in enumerate(zip(bars, mat_means)):
-    if val > 0.01:
+    if val > 0.005:
         ax.text(val + 0.003, bar.get_y() + bar.get_height() / 2,
                 f'{val:.3f}', va='center', fontsize=9, color='#c9d1d9')
-
-# Annotate groups
-ax.text(-0.02, 3.5, 'Attention\n(routing)', fontsize=8, color=C_BLUE, ha='right',
-        va='center', transform=ax.get_yaxis_transform())
-ax.text(-0.02, 5.0, 'MLP\n(content)', fontsize=8, color=C_GREEN, ha='right',
-        va='center', transform=ax.get_yaxis_transform())
 
 # Right: gate_proj sensitivity by layer (showing the L2 spike)
 ax = axes[1]
@@ -217,57 +214,61 @@ print("Saved fig11_quant_matrix.png")
 
 # ── Figure 12: Mixed-Precision Recipes ──────────────────────────
 
-fig, ax = plt.subplots(figsize=(12, 5))
+fig, ax = plt.subplots(figsize=(13, 5.5))
 
 recipes = [
     ("Uniform\n4-bit", t11_p3["recipes"]["uniform_4bit"]["ppl_delta"], C_GRAY),
-    ("T-9 Spectral\nInformed", min(t11_p3["recipes"]["t9_spectral"]["ppl_delta"], 500), C_PURPLE),
-    ("T-7 Linearity\nInformed", min(t11_p3["recipes"]["t7_linearity"]["ppl_delta"], 500), C_ORANGE),
+    ("Spectral\nInformed", min(t11_p3["recipes"]["t9_spectral"]["ppl_delta"], 500), C_PURPLE),
+    ("Linearity\nInformed", min(t11_p3["recipes"]["t7_linearity"]["ppl_delta"], 500), C_ORANGE),
     ("Sensitivity\nOracle", t11_p3["recipes"]["sensitivity_oracle"]["ppl_delta"], C_CYAN),
     ("L35 at 5-bit\n(rest 4-bit)", t11_p3["recipes"]["first_last_protected"]["ppl_delta"], C_GREEN),
     ("Q/K=3b\nV/MLP=5b", t11_p3["recipes"]["qk3_vmul5"]["ppl_delta"], C_BLUE),
 ]
+
+actuals = [t11_p3["recipes"]["uniform_4bit"]["ppl_delta"],
+           t11_p3["recipes"]["t9_spectral"]["ppl_delta"],
+           t11_p3["recipes"]["t7_linearity"]["ppl_delta"],
+           t11_p3["recipes"]["sensitivity_oracle"]["ppl_delta"],
+           t11_p3["recipes"]["first_last_protected"]["ppl_delta"],
+           t11_p3["recipes"]["qk3_vmul5"]["ppl_delta"]]
 
 names = [r[0] for r in recipes]
 deltas = [r[1] for r in recipes]
 colors = [r[2] for r in recipes]
 
 bars = ax.bar(range(len(recipes)), deltas, color=colors, alpha=0.85,
-              edgecolor='#30363d', linewidth=0.5, width=0.7)
+              edgecolor='#30363d', linewidth=0.5, width=0.65)
 ax.set_xticks(range(len(recipes)))
-ax.set_xticklabels(names, fontsize=9)
+ax.set_xticklabels(names, fontsize=10)
 ax.set_ylabel("PPL Δ from BF16 baseline")
-ax.set_title("Mixed-Precision Recipes at ~4-bit Average: Simple Wins",
+ax.set_title("Mixed-Precision Recipes at ~4-bit Average",
              fontsize=13, fontweight='bold', pad=10)
 ax.grid(True, axis='y', alpha=0.3)
 
-# Annotate actual values
+# Annotate actual values — position carefully to avoid overlaps
 for i, (bar, delta) in enumerate(zip(bars, deltas)):
-    actual = [t11_p3["recipes"]["uniform_4bit"]["ppl_delta"],
-              t11_p3["recipes"]["t9_spectral"]["ppl_delta"],
-              t11_p3["recipes"]["t7_linearity"]["ppl_delta"],
-              t11_p3["recipes"]["sensitivity_oracle"]["ppl_delta"],
-              t11_p3["recipes"]["first_last_protected"]["ppl_delta"],
-              t11_p3["recipes"]["qk3_vmul5"]["ppl_delta"]][i]
-    label = f'+{actual:.1f}' if actual < 100 else f'+{actual:.0f}'
+    label = f'+{actuals[i]:.1f}' if actuals[i] < 100 else f'+{actuals[i]:.0f}'
     y = bar.get_height()
-    if y > 10:
-        ax.text(bar.get_x() + bar.get_width() / 2, y * 0.9, label,
-                ha='center', va='top', fontsize=9, color='#0d1117', fontweight='bold')
+    if y > 100:
+        ax.text(bar.get_x() + bar.get_width() / 2, y * 0.5, label,
+                ha='center', va='center', fontsize=10, color='#c9d1d9', fontweight='bold')
+    elif y > 10:
+        ax.text(bar.get_x() + bar.get_width() / 2, y + 8, label,
+                ha='center', va='bottom', fontsize=9, color='#c9d1d9')
     else:
-        ax.text(bar.get_x() + bar.get_width() / 2, y + 2, label,
+        ax.text(bar.get_x() + bar.get_width() / 2, y + 15, label,
                 ha='center', va='bottom', fontsize=9, color='#c9d1d9')
 
-# Arrow pointing to the winner
-ax.annotate('Best', xy=(4, deltas[4]), xytext=(4, deltas[4] + 50),
-            arrowprops=dict(arrowstyle='->', color=C_GREEN, lw=2),
-            fontsize=11, color=C_GREEN, ha='center', fontweight='bold')
+# Star marker on the winner instead of overlapping arrow
+ax.plot(4, deltas[4], '*', color=C_GREEN, markersize=18, zorder=5)
+ax.text(4, deltas[4] + 30, 'Best', ha='center', va='bottom',
+        fontsize=11, color=C_GREEN, fontweight='bold')
 
-# Note about catastrophic failure
-ax.annotate('Spectral recipe assigns\n2-bit to early layers\n→ catastrophic failure',
-            xy=(1, deltas[1]), xytext=(2.5, 400),
-            arrowprops=dict(arrowstyle='->', color=C_PURPLE, lw=1.5),
-            fontsize=8, color=C_PURPLE, ha='center')
+# Note about catastrophic failure — position to the right to avoid overlap
+ax.annotate('Assigns 2-bit to early layers\n→ catastrophic failure',
+            xy=(1, deltas[1]), xytext=(1.8, 380),
+            arrowprops=dict(arrowstyle='->', color=C_PURPLE, lw=1.5, alpha=0.7),
+            fontsize=9, color=C_PURPLE, ha='left')
 
 plt.tight_layout()
 plt.savefig(OUTDIR / "fig12_mixed_precision.png", dpi=200, bbox_inches='tight',

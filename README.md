@@ -18,6 +18,8 @@ A collection of deep learning research experiments focused on transformer model 
 
 **[T-9: Weight Spectral Structure](experiments/t9_weight_spectral_structure/)** — SVD analysis of all 252 weight matrices (7 types x 36 layers). Q/K routing matrices are dramatically lower-rank (0.25–0.38 effective rank ratio) than V/O value processing (0.52) and MLP (0.50–0.68), confirming "where to attend" is simpler than "what to extract." Q_proj rank jumps 36.7% at layer 24→25 (discrete transition in routing complexity). Layer 1 MLP is degenerate (gate/down eff rank ~0.12–0.13). Late-layer MLP compression in layers 34–35. Model: Qwen3-4B-Instruct-2507.
 
+**[T-11: Quantization Sensitivity](experiments/t11_quantization/)** — Per-layer and per-matrix quantization sensitivity analysis using RTN simulation (2–8 bit) plus full-model method comparison (bitsandbytes NF4, torchao INT4, GPTQ). Early layers (L0–3) are catastrophically sensitive (L2 at 2-bit: +3,828 PPL), while mid-layers (L8–20) absorb 2-bit with <1 PPL impact. SwiGLU gate_proj is 50x more sensitive than Q/K projections. Sensitivity correlates with linearity gap (ρ=0.68). Spectral-informed mixed-precision fails; simple uniform 4-bit is near-lossless. Model: Qwen3-4B-Instruct-2507.
+
 **[T-17: Contrastive Completion Trajectories](experiments/t17_contrastive_trajectories/)** — Force-decode semantically related completions (synonyms, antonyms, style variants, unrelated) and compare hidden-state trajectories layer-by-layer. Discovers a meaning-vs-form crossover at layer ~18: synonyms are closer than antonyms in early layers (shared meaning) but diverge more in late layers (different surface forms). Context dominates token identity in the residual stream (antonym cosine > 0.72 across layers 2–34). Layer 35 universally destroys inter-completion similarity. KL divergence follows a U-shape for all types except antonyms. 50 hand-crafted contrastive groups, 4 relationship types. Model: Qwen3-4B-Instruct-2507.
 
 **[Layer Shuffle Recovery](experiments/layer_shuffle_recovery/)** — Shuffle all 28 layers of Qwen3-1.7B and test 13 recovery methods. Best pipeline achieves perfect recovery (100% accuracy) in ~19 seconds.
@@ -32,14 +34,14 @@ See [TODO.md](TODO.md) for the full research agenda:
 
 - **T-5, T-6, T-8**: Architecture surgery — cross-model layer transplant, layer doubling/iteration, thinking vs answer token routing.
 - **T-10a/b**: Attention architecture survey & kernel benchmarks — comparative study of MHA, GQA, MLA, DeltaNet, Mamba2, RWKV-7, sparse attention, and hybrid designs; GPU kernel microbenchmarks (FA2/3/4, FlashInfer, Triton, SageAttention3).
-- **T-11 to T-14**: Inference & systems — quantization methods, CUDA graphs & torch.compile, KV-cache optimization, NIXL & disaggregated inference.
-- **T-15, T-16**: Component analysis — normalization layer analysis & replacement, activation function survey & ablation.
+- **T-12 to T-14**: Inference & systems — CUDA graphs & torch.compile, KV-cache optimization, NIXL & disaggregated inference.
+- **T-16**: Component analysis — activation function survey & ablation.
 - **D-1 to D-6**: Diffusion-inspired experiments — depth-as-denoising, noise injection/recovery, iterative refinement, flow matching, AR as discrete denoiser, textual diffusion from scratch.
 - **VL-1 to VL-8**: Vision-language model experiments (Qwen3-VL-2B-Instruct) — modality gap, visual token redundancy, hallucination localization, bottleneck analysis, representation decoding, modality-specific criticality, cross-modal interference, VLM layer shuffle.
 
 ## Evaluation Data
 
-Experiments T-1 through T-4, T-7, and T-9 use pre-generated greedy completions as evaluation data. T-17 uses hand-crafted contrastive pairs (`data/text_completions/contrastive_pairs.json`).
+Experiments T-1 through T-4, T-7, T-9, and T-11 use pre-generated greedy completions as evaluation data. T-17 uses hand-crafted contrastive pairs (`data/text_completions/contrastive_pairs.json`).
 - Prompts: 50 question/instruction-format prompts across 7 categories (factual, reasoning, linguistic, code, world knowledge, technical, rare)
 - Completions generated via vLLM (temp=0, max 2048 tokens) with system message to prevent echo
 - Loss computed only on completion tokens, not prompt/template tokens

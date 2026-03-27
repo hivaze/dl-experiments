@@ -443,7 +443,7 @@ Pure performance benchmarking of attention **kernel implementations** — differ
 - How close does cross-platform Triton Attention get to vendor-specific kernels (FA4, CUTLASS)? Is portability worth the performance gap?
 - For MLA workloads: is FlashMLA on Hopper comparable to CUTLASS MLA on Blackwell, or does the architecture need different kernels per GPU generation?
 
-### T-11. Quantization Methods Comparative Analysis
+### T-11. Quantization Methods Comparative Analysis ✅ [completed](experiments/t11_quantization/)
 Comprehensive comparison of quantization techniques across quality, performance, and mathematical accuracy dimensions.
 
 **Methods/tools to evaluate:**
