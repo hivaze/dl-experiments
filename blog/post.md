@@ -297,8 +297,8 @@ The transformer isn't 36 interchangeable layers. It's three functional modules w
 
 A fourth experiment — per-layer quantization sensitivity — provides independent confirmation from a completely different perturbation type. Instead of replacing layers with linear maps, I quantized each layer's weights individually to 2-bit precision and measured perplexity impact:
 
-![Per-Layer Quantization Sensitivity](images/fig10_quant_sensitivity.png)
-*Figure 10. Top: Per-layer quantization sensitivity at 2-bit RTN. Early layers (L0–4) are catastrophically sensitive (L2: +3,828 PPL), while mid-layers (L8–20) barely register (< 1 PPL). Inset shows full scale for early layers. Bottom: The linearity gap (red) and quantization sensitivity (blue, log scale) track each other across depth ($\rho$ = 0.68, p < 0.0001).*
+![Linearity Gap Predicts Quantization Sensitivity](images/fig10_quant_sensitivity.png)
+*Figure 10. The linearity gap (red line, left axis) and 2-bit quantization sensitivity (blue bars, right axis, log scale) track each other across depth ($\rho$ = 0.68, p < 0.0001). Early layers (L0–3) are catastrophically sensitive — quantizing layer 2 alone increases perplexity by 3,828. Mid-layers (L8–20) absorb even 2-bit quantization with less than 1 PPL impact. Phase bands match those identified independently by the geometry and spectral experiments.*
 
 The pattern is striking: layers 0–3 are catastrophically sensitive (quantizing layer 2 alone to 2-bit increases perplexity by 3,828), while the entire mid-depth range (layers 8–20) absorbs 2-bit quantization with less than 1 PPL impact. The sensitivity profile correlates strongly with the linearity gap ($\rho$ = 0.68) — layers that are more nonlinear are also harder to quantize — with a mild late-layer uptick at layer 35 (+6 PPL). The early-layer vulnerability makes geometric sense: errors at layer 2 propagate through 34 subsequent layers, while errors at layer 20 only traverse 16.
 

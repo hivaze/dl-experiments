@@ -84,73 +84,67 @@ phases = [
 
 
 # ── Figure 10: Quantization Sensitivity vs Linearity Gap ─────────
+#    Single panel: dual-axis overlay showing the correlation
 
-fig, axes = plt.subplots(2, 1, figsize=(14, 9), sharex=True,
-                          gridspec_kw={'height_ratios': [1.2, 1]})
+fig, ax = plt.subplots(figsize=(14, 5.5))
 
-# Top: 2-bit sensitivity depth profile with phase regions
-ax = axes[0]
+# Phase background bands
 for start, end, label, color in phases:
     ax.axvspan(start - 0.5, end + 0.5, color=color, zorder=0)
     mid = (start + end) / 2
-    ax.text(mid, max(sens_2b[5:]) * 0.9, label, ha='center', va='top',
-            fontsize=8, color='#8b949e', alpha=0.7)
+    ax.text(mid, 0.255, label, ha='center', va='top',
+            fontsize=9, color='#8b949e', alpha=0.8)
 
-ax.bar(layers, sens_2b, color=C_RED, alpha=0.8, width=0.8, zorder=2)
-# Clip the extreme values for readability
-clip_val = 50
-for l in range(N_LAYERS):
-    if sens_2b[l] > clip_val:
-        ax.annotate(f'{sens_2b[l]:.0f}', (l, clip_val * 0.95),
-                    ha='center', va='top', fontsize=8, color=C_RED, fontweight='bold')
-ax.set_ylim(0, clip_val)
-ax.set_ylabel("PPL increase\n(2-bit RTN, single layer)")
-ax.set_title("Per-Layer Quantization Sensitivity", fontsize=14, fontweight='bold', pad=10)
-ax.grid(True, axis='y', alpha=0.3)
+# Left axis: linearity gap (line)
+l1 = ax.plot(layers, t7_gap, 'o-', color=C_RED, ms=5, lw=1.8,
+             label='Linearity Gap', zorder=3)
+ax.set_ylabel("Linearity Gap (perturbation)", color=C_RED, fontsize=12)
+ax.set_xlabel("Layer Index", fontsize=12)
+ax.tick_params(axis='y', labelcolor=C_RED)
+ax.set_ylim(0.12, 0.26)
 
-# Inset for extreme values
-inset = ax.inset_axes([0.3, 0.45, 0.45, 0.50])
-inset.bar([0, 1, 2, 3, 4], [sens_2b[i] for i in [0, 1, 2, 3, 4]],
-          color=[C_RED if s > 50 else C_ORANGE for s in [sens_2b[i] for i in [0, 1, 2, 3, 4]]],
-          alpha=0.9)
-inset.set_xticks([0, 1, 2, 3, 4])
-inset.set_xticklabels(['L0', 'L1', 'L2', 'L3', 'L4'], fontsize=8)
-inset.set_ylabel("PPL Δ", fontsize=8)
-inset.set_title("Early layers (full scale)", fontsize=9, color='#c9d1d9')
-inset.set_facecolor('#1c2128')
-for spine in inset.spines.values():
-    spine.set_color('#30363d')
-inset.tick_params(colors='#8b949e', labelsize=7)
-inset.yaxis.label.set_color('#c9d1d9')
-
-# Bottom: Overlay with T-7 linearity gap
-ax = axes[1]
-for start, end, label, color in phases:
-    ax.axvspan(start - 0.5, end + 0.5, color=color, zorder=0)
-
-ax.plot(layers, t7_gap, 'o-', color=C_RED, ms=5, lw=1.5, label='T-7 Linearity Gap', zorder=3)
+# Right axis: 2-bit sensitivity (bars, log scale)
 ax2 = ax.twinx()
-# Use log scale for sensitivity to show pattern
-sens_2b_clip = np.clip(sens_2b, 0.1, None)
-ax2.plot(layers, sens_2b_clip, 's-', color=C_BLUE, ms=4, lw=1.5, alpha=0.8,
-         label='2-bit Sensitivity', zorder=2)
+sens_2b_clip = np.clip(sens_2b, 0.15, None)  # clip zeros for log
+bars = ax2.bar(layers, sens_2b_clip, color=C_BLUE, alpha=0.35, width=0.7, zorder=1)
+l2 = ax2.plot(layers, sens_2b_clip, 's', color=C_BLUE, ms=4, zorder=2,
+              label='2-bit Quant Sensitivity')
 ax2.set_yscale('log')
+ax2.set_ylabel("PPL Δ at 2-bit (log scale)", color=C_BLUE, fontsize=12)
+ax2.tick_params(axis='y', labelcolor=C_BLUE)
 
-ax.set_xlabel("Layer Index")
-ax.set_ylabel("Linearity Gap", color=C_RED)
-ax2.set_ylabel("PPL Δ (2-bit, log scale)", color=C_BLUE)
+# Annotate the extreme early-layer values
+for l_idx in [0, 1, 2, 3]:
+    if sens_2b[l_idx] > 10:
+        ax2.annotate(f'+{sens_2b[l_idx]:.0f}',
+                     (l_idx, sens_2b[l_idx]),
+                     textcoords='offset points', xytext=(0, 8),
+                     ha='center', fontsize=8, color=C_BLUE, fontweight='bold')
 
+# Annotate layer 35
+ax2.annotate(f'+{sens_2b[35]:.1f}',
+             (35, sens_2b[35]),
+             textcoords='offset points', xytext=(0, 8),
+             ha='center', fontsize=8, color=C_BLUE, fontweight='bold')
+
+# Correlation stat box
 r, p = stats.spearmanr(t7_gap, sens_2b)
 ax.text(0.98, 0.95, f'Spearman ρ = {r:.2f}\np < 0.0001',
         transform=ax.transAxes, ha='right', va='top',
-        fontsize=10, color='#c9d1d9',
-        bbox=dict(boxstyle='round,pad=0.3', facecolor='#21262d', edgecolor='#30363d'))
+        fontsize=11, color='#c9d1d9',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='#21262d',
+                  edgecolor='#30363d', alpha=0.9))
 
-lines1, labels1 = ax.get_legend_handles_labels()
-lines2, labels2 = ax2.get_legend_handles_labels()
-ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left',
-          fontsize=9, facecolor='#161b22', edgecolor='#30363d')
-ax.grid(True, axis='y', alpha=0.3)
+# Combined legend
+lines = l1 + l2
+labels = [l.get_label() for l in lines]
+ax.legend(lines, labels, loc='upper left', fontsize=10,
+          facecolor='#161b22', edgecolor='#30363d')
+
+ax.set_title("Linearity Gap Predicts Quantization Sensitivity",
+             fontsize=14, fontweight='bold', pad=12)
+ax.grid(True, axis='y', alpha=0.2)
+ax.set_xlim(-0.8, 35.8)
 
 plt.tight_layout()
 plt.savefig(OUTDIR / "fig10_quant_sensitivity.png", dpi=200, bbox_inches='tight',
@@ -191,19 +185,21 @@ for i, (bar, val) in enumerate(zip(bars, mat_means)):
 # Right: gate_proj sensitivity by layer (showing the L2 spike)
 ax = axes[1]
 gate_sens = mat_sens["gate_proj"]
+# Plot with clipped bars; use log scale to show the L2 spike naturally
+gate_clipped = np.clip(gate_sens, 1e-4, None)
 colors = [C_RED if g > 0.1 else C_ORANGE if g > 0.03 else C_GRAY for g in gate_sens]
-ax.bar(layers, gate_sens, color=colors, alpha=0.85, width=0.8)
-# Clip for readability
-clip_g = 0.5
-for l in range(N_LAYERS):
-    if gate_sens[l] > clip_g:
-        ax.annotate(f'{gate_sens[l]:.1f}', (l, clip_g * 0.95),
-                    ha='center', va='top', fontsize=8, color=C_RED, fontweight='bold')
-ax.set_ylim(0, clip_g)
+ax.bar(layers, gate_clipped, color=colors, alpha=0.85, width=0.8)
+ax.set_yscale('log')
+ax.set_ylim(5e-4, 15)
 ax.set_xlabel("Layer Index")
-ax.set_ylabel("PPL Δ (3-bit, gate_proj only)")
+ax.set_ylabel("PPL Δ (3-bit, gate_proj only, log)")
 ax.set_title("gate_proj: The SwiGLU Achilles' Heel", fontsize=13, fontweight='bold')
 ax.grid(True, axis='y', alpha=0.3)
+# Annotate the L2 spike
+ax.annotate(f'L2: +{gate_sens[2]:.1f}', (2, gate_sens[2]),
+            textcoords='offset points', xytext=(14, 6),
+            ha='left', fontsize=9, color=C_RED, fontweight='bold',
+            arrowprops=dict(arrowstyle='->', color=C_RED, lw=1.2))
 
 plt.tight_layout()
 plt.savefig(OUTDIR / "fig11_quant_matrix.png", dpi=200, bbox_inches='tight',
