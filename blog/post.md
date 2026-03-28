@@ -377,23 +377,6 @@ For deployment: use bitsandbytes NF4 (PPL within 0.1 of BF16), or if you need fi
 
 ---
 
-## What This Means for How You Think About Transformers
-
-The standard mental model — 36 identical layers, each refining a little — deserves an update. What actually happens is closer to:
-
-1. **Destroy** the input embedding and expand into a working space
-2. **Compress** violently into a low-dimensional bottleneck
-3. **Expand** and do distributed, high-dimensional processing (the only part that resembles the textbook)
-4. **Compress** again through a near-singularity
-5. **Build** an anisotropic cannon (norms growing superlinearly, all tokens pointing the same way)
-6. **Fire backwards** — actively oppose everything the previous 17 layers built, to create the separation the output head needs
-
-The architecture that emerges from training isn't a smooth pipeline. It's a sequence of radical geometric transformations separated by low-dimensional bottlenecks. An important caveat: I measured *geometry*, not *information*. The bottlenecks could be functional compression (actively discarding irrelevant features, as the information bottleneck principle of Tishby et al. 2000 would predict), or they could be a geometric side-effect of training dynamics — gradient flow naturally creating low-rank regions. Distinguishing these hypotheses would require measuring mutual information $I(X; T)$ and $I(T; Y)$ at each layer, which I did not do. (The debate is ongoing: Shwartz-Ziv & Tishby 2017 argue for IB compression in DNNs; Saxe et al. 2018 show it depends on activation function choice.) What I *can* say is that the bottleneck's geometric effect is real and has measurable downstream consequences — the practical recipes in Part V hold regardless of which interpretation is correct.
-
-These findings also connect to recent work in mechanistic interpretability. The "residual stream" framing (Elhage et al., 2021) treats each layer as writing to a shared communication channel — the phase structure above shows that what gets written changes character dramatically across depth. The layer-pruning literature (Men et al., 2024; Gromov et al., 2024) has found that middle layers are often removable — the linearization paradox offers a geometric explanation for *why* some layers resist removal despite appearing redundant by local metrics. The connections run deeper.
-
----
-
 ## Part VI: Where Geometry Meets Interpretability
 
 The experiments above measure transformer internals *from the outside* — probing geometry, spectral structure, and stress-testing with compression. A parallel line of research approaches the same layers *from the inside*, tracing individual features and circuits. The two perspectives converge in ways that sharpen both.
@@ -433,6 +416,21 @@ The early-layer catastrophe (layer 2 at 2-bit → +3,828 PPL) also fits: Anthrop
 ---
 
 These connections aren't just theoretical — they provide mechanistic justification for the practical recipes in Part V. Skip the bottleneck for LoRA because there are too few active feature directions at PR = 2.3 for adaptation to modify. Protect early layers from quantization because they build the shared features every downstream circuit reads from. Give the dispersal layer extra precision because its hard nonlinear computation resists the linear approximation that quantization implicitly performs. The geometry tells you *where* to intervene; the interpretability tells you *why*.
+
+The "residual stream" framing (Elhage et al., 2021) treats each layer as writing to a shared communication channel — the phase structure shows that what gets written changes character dramatically across depth. The layer-pruning literature (Men et al., 2024; Gromov et al., 2024) has found that middle layers are often removable — the linearization paradox offers a geometric explanation for *why* some layers resist removal despite appearing redundant by local metrics.
+
+## Conclusion
+
+The standard mental model — 36 identical layers, each refining a little — deserves an update. What actually happens is closer to:
+
+1. **Destroy** the input embedding and expand into a working space
+2. **Compress** violently into a low-dimensional bottleneck
+3. **Expand** and do distributed, high-dimensional processing (the only part that resembles the textbook)
+4. **Compress** again through a near-singularity
+5. **Build** an anisotropic cannon (norms growing superlinearly, all tokens pointing the same way)
+6. **Fire backwards** — actively oppose everything the previous 17 layers built, to create the separation the output head needs
+
+The architecture that emerges from training isn't a smooth pipeline. It's a sequence of radical geometric transformations separated by low-dimensional bottlenecks. An important caveat: I measured *geometry*, not *information*. The bottlenecks could be functional compression (actively discarding irrelevant features, as the information bottleneck principle of Tishby et al. 2000 would predict), or they could be a geometric side-effect of training dynamics — gradient flow naturally creating low-rank regions. Distinguishing these would require measuring mutual information $I(X; T)$ and $I(T; Y)$ at each layer, which I did not do. (The debate is ongoing: Shwartz-Ziv & Tishby 2017 argue for IB compression in DNNs; Saxe et al. 2018 show it depends on activation function choice.) What I *can* say is that the bottleneck's geometric effect is real and has measurable downstream consequences — the practical recipes in Part V hold regardless of which interpretation is correct.
 
 And somewhere in the 0.3% of variance that your linear approximation misses, the model is hiding almost half of what it knows.
 
