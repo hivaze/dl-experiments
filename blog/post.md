@@ -12,7 +12,7 @@ I ran four experiments dissecting Qwen3-4B, a 4-billion parameter transformer �
 
 At layer 16, your 2560-dimensional hidden state collapses to **2.3 effective dimensions**. A single axis explains two-thirds of all variance. Geometrically, the representation is passing through a near-singular bottleneck — almost all distinguishing structure lives on a single axis.
 
-And then it gets weirder: the layers *around* that bottleneck — the ones that look the most linear by every local metric — are precisely the ones that *cannot* be replaced by a linear map. A layer with R² = 0.997 between its outputs and a fitted linear replacement recovers only 54% of model quality when you actually swap it in. The 0.3% of variance it misses is correlated with almost half the downstream loss impact.
+And then it gets weirder: a layer with R² = 0.997 between its outputs and a fitted linear replacement recovers only 54% of model quality when you actually swap it in. A linear map captures 99.7% of a layer's activation variance — and the 0.3% it misses is responsible for almost half the downstream loss impact. Layers that look linear aren't safely replaceable; the nonlinear sliver carries the computation that matters.
 
 This post presents four convergent lines of evidence that the standard understanding of transformer internals is, if not wrong, at least dangerously incomplete.
 
@@ -118,7 +118,7 @@ To see why layer 16 is a "pinhole," look at the actual singular value spectra:
 ![Singular Value Spectra](images/fig_sv_spectra.png)
 *Figure 2a. Singular value spectra at three representative layers. Layer 10 (distributed processing) spreads variance across many dimensions — a healthy, high-dimensional representation. Layer 16 (the bottleneck) concentrates 67% of all variance on a single axis. Layer 35 (dispersal) is high-dimensional again but with a different spectral shape. Dashed line shows cumulative variance.*
 
-The two bottlenecks are especially important. At layer 16, the model forces all of its intermediate computation through just 2.3 effective dimensions. Whatever features survive this compression are the only ones available to the remaining 19 layers. This has profound consequences for fine-tuning, pruning, and any technique that freezes part of the network — as I'll show in Part V.
+The second bottleneck is especially important. At layer 16, variance concentrates so heavily that a single axis explains 67% of all token variation — the representation is still 2560-dimensional, but almost all distinguishing signal lives on 2–3 axes. Whatever structure survives this compression is all the remaining 19 layers have to work with. This has profound consequences for fine-tuning, pruning, and any technique that freezes part of the network — as I'll show in Part V.
 
 ### The Embedding Is Erased by Layer 5
 
@@ -385,17 +385,17 @@ The experiments above measure transformer internals *from the outside* — probi
 
 ### The Bottleneck as a Superposition Chokepoint
 
-Anthropic's [Scaling Monosemanticity](https://transformer-circuits.pub/2024/scaling-monosemanticity/index.html) work (Templeton et al., 2024) shows that the residual stream represents concepts as sparse linear directions — ~300 features active per token out of millions possible. The participation ratio measures the same quantity from the geometric side: how many independent directions carry variance at each layer.
-
-At layer 16, PR = 2.3. In the language of superposition, the model is squeezing its entire intermediate representation through ~2 effective dimensions — out of 2,560 available. Whatever features remain distinguishable in this drastically compressed space are all the remaining 19 layers have to work with.
-
-But how much can 2.3 dimensions actually hold? More than you'd think. The [abliteration](https://huggingface.co/blog/mlabonne/abliteration) technique (Labonne, 2024) demonstrates that safety-trained refusal in Llama 3 is mediated by *one* direction in the residual stream. The math is elegant — extract the refusal direction, then orthogonalize the weights against it:
+Anthropic's [Scaling Monosemanticity](https://transformer-circuits.pub/2024/scaling-monosemanticity/index.html) work (Templeton et al., 2024) shows that the residual stream represents concepts as sparse linear directions — ~300 features active per token out of millions possible. These features are packed into the residual stream via **superposition**: many more features than dimensions, encoded as nearly-orthogonal directions. The [abliteration](https://huggingface.co/blog/mlabonne/abliteration) technique (Labonne, 2024) demonstrates just how fine-grained this encoding is — safety-trained refusal in Llama 3 is mediated by a *single direction*. Orthogonalize it away and the behavior disappears:
 
 $$\hat{r} = \frac{\overline{h}_\text{harmful} - \overline{h}_\text{harmless}}{\lVert \overline{h}_\text{harmful} - \overline{h}_\text{harmless} \rVert} \qquad W' = W - (W \hat{r})\hat{r}^\top$$
 
-A rank-1 spectral modification permanently disables an entire behavioral mode without retraining. If one direction can encode "refuse," then 2.3 effective dimensions at the bottleneck represent far more information capacity than the raw number suggests. The superposition hypothesis says models pack features into nearly-orthogonal directions; the PR measurements show *how tightly* they pack at each depth.
+A rank-1 spectral modification permanently disables an entire behavioral mode without retraining. One direction, one behavior — the residual stream's directional structure is *that* semantically precise.
 
-This same contrastive operation — comparing activations between contrasting inputs to find meaningful directions — is at the core of the contrastive completion trajectories experiment (T-17). I tracked how paired completions (antonyms like "star" vs "planet," synonyms, style variants) diverge geometrically across depth. Early layers separate antonyms more than synonyms (semantic processing); late layers reverse this (form commitment). The residual stream's geometry carries *meaning* before it carries *tokens*.
+Now consider what happens at the bottleneck. Across layers 16–24, the participation ratio collapses to 2.3–17, meaning the *variance* across tokens concentrates onto a handful of axes. The representations still live in 2,560-dimensional space — other directions still carry information — but the signal-to-noise ratio on those minor axes drops dramatically. If features are encoded as individual directions, and the model can lose an entire behavioral mode by corrupting just one of them, then the bottleneck is where superposition is most *fragile*: hundreds of features must remain distinguishable despite variance concentrating onto 2–3 dominant axes.
+
+This explains the experimental findings from the inside. The linearization paradox — R² = 0.997 but only 54% CE recovery — makes sense: a linear map captures the dominant variance axes perfectly but smears the low-variance directions where feature distinctions live. The LoRA finding — the bottleneck works best frozen — also follows: adding new adaptation directions into a space where existing features are packed to maximum density risks overwriting the precise angular relationships that superposition depends on. And quantization sensitivity peaks in early layers, not the bottleneck itself, because early features are the shared *inputs* to every downstream circuit — corrupt them, and the error compounds through the bottleneck's tight packing.
+
+A separate contrastive experiment reinforces this: tracking how paired completions (antonyms like "star" vs "planet," synonyms, style variants) diverge geometrically across depth reveals that early layers separate antonyms more than synonyms (semantic processing), while late layers reverse this (form commitment). The residual stream's geometry carries *meaning* before it carries *tokens*.
 
 ### The Linearization Gap — From Both Sides
 
@@ -415,7 +415,7 @@ The early-layer catastrophe (layer 2 at 2-bit → +3,828 PPL) also fits: Anthrop
 
 ---
 
-These connections aren't just theoretical — they provide mechanistic justification for the practical recipes in Part V. Skip the bottleneck for LoRA because there are too few active feature directions at PR = 2.3 for adaptation to modify. Protect early layers from quantization because they build the shared features every downstream circuit reads from. Give the dispersal layer extra precision because its hard nonlinear computation resists the linear approximation that quantization implicitly performs. The geometry tells you *where* to intervene; the interpretability tells you *why*.
+These connections aren't just theoretical — they provide mechanistic justification for the practical recipes in Part V. Skip the bottleneck for LoRA because superposed features are packed to maximum density there — new directions risk overwriting existing ones. Protect early layers from quantization because they build the shared features every downstream circuit reads from. Give the dispersal layer extra precision because its hard nonlinear computation resists the linear approximation that quantization implicitly performs. The geometry tells you *where* to intervene; the interpretability tells you *why*.
 
 The "residual stream" framing (Elhage et al., 2021) treats each layer as writing to a shared communication channel — the phase structure shows that what gets written changes character dramatically across depth. The layer-pruning literature (Men et al., 2024; Gromov et al., 2024) has found that middle layers are often removable — the linearization paradox offers a geometric explanation for *why* some layers resist removal despite appearing redundant by local metrics.
 
@@ -424,9 +424,9 @@ The "residual stream" framing (Elhage et al., 2021) treats each layer as writing
 The standard mental model — 36 identical layers, each refining a little — deserves an update. What actually happens is closer to:
 
 1. **Destroy** the input embedding and expand into a working space
-2. **Compress** violently into a low-dimensional bottleneck
+2. **Compress** into an initial low-dimensional passage
 3. **Expand** and do distributed, high-dimensional processing (the only part that resembles the textbook)
-4. **Compress** again through a near-singularity
+4. **Compress** again through the bottleneck — a near-singularity where variance collapses to 2–3 axes
 5. **Build** an anisotropic cannon (norms growing superlinearly, all tokens pointing the same way)
 6. **Fire backwards** — actively oppose everything the previous 17 layers built, to create the separation the output head needs
 
