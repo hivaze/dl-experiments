@@ -6,7 +6,7 @@
 
 Every ML engineer has the same mental model of a transformer: tokens go in, layers refine them one at a time, logits come out. Each layer does "a little bit of attention" and "a little bit of MLP," and after dozens of these gentle refinements, you get a prediction. It's clean, it's symmetric, it's intuitive.
 
-**It's also completely wrong.**
+**It's also missing most of the picture.**
 
 I ran four experiments dissecting Qwen3-4B, a 4-billion parameter transformer — measuring the SVD of all 252 weight matrices, computing Jacobians at every layer, tracking the geometry of 4,094 tokens as they flow through all 36 layers, and stress-testing every layer with quantization down to 2-bit precision. What I found looks nothing like the textbook picture.
 
@@ -195,7 +195,7 @@ To measure how well each linear map fits the activations it was trained on, I re
 The expected relationship — good fit means good replacement — **does not hold**:
 
 - **Layer 6**: R² = 0.997 (the linear map captures 99.7% of activation variance), CE recovery = **54%**. The 0.3% of variance the linear map misses corresponds to nearly half the downstream loss degradation. Independent confirmation comes from a layer knockout experiment: removing layer 6 causes a **21.7× loss increase** — the second most critical layer in the entire model, after only layer 0 (99.6×). Even removing *neighboring* layers alongside it is catastrophic: the (5, 6) pair knockout causes 63.7× loss increase, far exceeding the sum of their individual effects (synergy = 3.53).
-- **Layer 16**: R² = 0.768, CE recovery = **39%** (the worst). The fitted map doesn't just fail to help — it actively misleads downstream computation.
+- **Layer 16**: R² = 0.768, CE recovery = **37%** (the worst). The fitted map doesn't just fail to help — it actively misleads downstream computation.
 - **Layer 0**: R² = 0.787, CE recovery = **98%**. Lower fit quality but near-perfect replacement — because its dominant 8× embedding projection overwhelms the nonlinear variation.
 
 Only **12 of 36 layers** achieve ≥73% CE recovery. The middle-to-late layers (16–33) resist linearization despite having the lowest perturbation gaps.
@@ -213,7 +213,7 @@ Layers 11 and 15–18 have a gap ratio ≥ 1.0 — they are **more nonlinear alo
 
 And then error amplification through depth makes it worse: a 13% error at layer 16 propagates through 19 subsequent layers, along directions that downstream layers are tuned to be sensitive to. Small in norm, large in informational content.
 
-A quantization experiment (below) provides direct empirical confirmation: the linearity gap correlates with quantization sensitivity at $\rho = 0.68$ ($p < 0.0001$), rising to $\rho = 0.71$ for the MLP component specifically. Layers the gap flags as "nonlinear" are precisely the ones that break under aggressive quantization — and layers it flags as "linear" survive. The linearization paradox isn't an artifact of the replacement method; it shows up in a completely independent perturbation type.
+A quantization experiment (below) provides direct empirical confirmation: the linearity gap correlates with quantization sensitivity at $\rho = 0.71$ ($p < 0.0001$) for the MLP component specifically. Layers the gap flags as "nonlinear" are precisely the ones that break under aggressive quantization — and layers it flags as "linear" survive. The linearization paradox isn't an artifact of the replacement method; it shows up in a completely independent perturbation type.
 
 ---
 
@@ -285,7 +285,7 @@ The four experiments weren't designed to tell a unified story, but they do. Here
 
 ### The Bottleneck Layers Are Non-Linearizable
 
-The second compression (layers 16–24) has the lowest participation ratio (PR = 2.3–17, Exp. 1), sits in the "linear plateau" of the perturbation gap (gap ~0.13, Exp. 2), and has moderate weight rank (Exp. 3). Naively, these layers look like prime linearization candidates — locally smooth, low-dimensional. But they achieve the *worst* CE recovery (39–65%, Exp. 2). Layer knockout confirms this: layers in the distributed processing zone (6–14) are the most critical to remove, with loss ratios of 5–22×. The bottleneck layers and the layers that feed them are load-bearing — they just don't look like it from local metrics. Why?
+The second compression (layers 16–24) has the lowest participation ratio (PR = 2.3–17, Exp. 1), sits in the "linear plateau" of the perturbation gap (gap ~0.13, Exp. 2), and has moderate weight rank (Exp. 3). Naively, these layers look like prime linearization candidates — locally smooth, low-dimensional. But they achieve the *worst* CE recovery (37–65%, Exp. 2). Layer knockout confirms this: layers in the distributed processing zone (6–14) are the most critical to remove, with loss ratios of 5–22×. The bottleneck layers and the layers that feed them are load-bearing — they just don't look like it from local metrics. Why?
 
 Because squeezing through a near-one-dimensional bottleneck means the tiny nonlinear residual encodes *all* the distinguishing information. When representations are compressed to 2–3 effective dimensions, two different inputs land on nearly the same axis. The small nonlinear correction that the linear map misses is exactly what separates them. And that error propagates through 10–19 subsequent layers, amplified along directions that downstream layers are tuned to be sensitive to. Small in norm, devastating in informational content.
 
@@ -308,7 +308,7 @@ A fourth experiment — per-layer quantization sensitivity — provides independ
 ![Linearity Gap Predicts Quantization Sensitivity](images/fig10_quant_sensitivity.png)
 *Figure 10. The linearity gap (red line, left axis) and 2-bit quantization sensitivity (blue bars, right axis, log scale) track each other across depth ($\rho = 0.68$, $p < 0.0001$). Early layers (L0–3) are catastrophically sensitive — quantizing layer 2 alone increases perplexity by 3,828. Mid-layers (L8–20) absorb even 2-bit quantization with less than 1 PPL impact. Phase bands match those identified independently by the geometry and spectral experiments.*
 
-The pattern is striking: layers 0–3 are catastrophically sensitive (quantizing layer 2 alone to 2-bit increases perplexity by 3,828), while the entire mid-depth range (layers 8–20) absorbs 2-bit quantization with less than 1 PPL impact. The sensitivity profile correlates strongly with the linearity gap ($\rho = 0.68$) — layers that are more nonlinear are also harder to quantize — with a mild late-layer uptick at layer 35 (+6 PPL). The early-layer vulnerability makes geometric sense: errors at layer 2 propagate through 34 subsequent layers, while errors at layer 20 only traverse 16.
+The pattern is striking: layers 0–3 are catastrophically sensitive (quantizing layer 2 alone to 2-bit increases perplexity by 3,828), while the entire mid-depth range (layers 8–20) absorbs 2-bit quantization with less than 1 PPL impact. The sensitivity profile correlates strongly with the linearity gap ($\rho = 0.71$) — layers that are more nonlinear are also harder to quantize — with a mild late-layer uptick at layer 35 (+6 PPL). The early-layer vulnerability makes geometric sense: errors at layer 2 propagate through 34 subsequent layers, while errors at layer 20 only traverse 16.
 
 A follow-up LoRA experiment reinforces this further: adapting only the output preparation phase (L25–35) with 10M parameters matches all-layer adaptation (33M parameters) on both in-distribution and OOD benchmarks, while skipping the bottleneck phase entirely yields the best in-distribution gains. The phases aren't just geometric curiosities — they predict where adaptation and compression are effective.
 
@@ -351,7 +351,7 @@ A critical methodological note: standard LoRA learning rates (2e-4) caused catas
 
 The same LoRA experiment produced a counterintuitive finding: skipping the bottleneck entirely (LoRA on layers 0–14 + 25–35) achieved the highest in-distribution accuracy (93.0% GSM8K, +3.5pp above baseline) while perfectly preserving OOD capability (79.0% MATH-500, matching baseline). Adapting only the late layers (L25–35) with just 10M parameters also improved OOD (80.0% MATH-500).
 
-The bottleneck functions as a **frozen information channel**. The geometric filter at layers 16–24 is already well-calibrated by pre-training; adapting the high-dimensional layers on either side is more effective than trying to modify a near-one-dimensional passage. The bottleneck compresses to 2–5 effective dimensions — there's simply no room for LoRA to add useful new directions. Adapting it is like trying to widen a canal by pushing on the walls; you're better off adjusting course before and after.
+The bottleneck functions as a **frozen information channel**. The geometric filter at layers 16–24 is already well-calibrated by pre-training; adapting the high-dimensional layers on either side is more effective than trying to modify a near-one-dimensional passage. The bottleneck compresses to 2–5 effective dimensions — there's simply no room for LoRA to add useful new directions without disrupting the few that remain. Adapting it is like trying to widen a canal by pushing on the walls; you're better off adjusting course before and after.
 
 For efficient fine-tuning: **skip the bottleneck layers** and concentrate LoRA on the distributed processing zone (L6–15) and output preparation zone (L25–35). The bottleneck's low dimensionality and highly correlated updates (cosine > 0.5 between adjacent layers in L17–23) also suggest these layers are candidates for depth pruning — but that remains to be tested directly.
 
@@ -388,9 +388,51 @@ The standard mental model — 36 identical layers, each refining a little — de
 5. **Build** an anisotropic cannon (norms growing superlinearly, all tokens pointing the same way)
 6. **Fire backwards** — actively oppose everything the previous 17 layers built, to create the separation the output head needs
 
-The architecture that emerges from training isn't a smooth pipeline. It's a sequence of radical geometric transformations separated by low-dimensional bottlenecks. Whether these bottlenecks are *functional* — actively discarding irrelevant features, as the information bottleneck principle (Tishby et al., 2000) would predict — or merely a geometric side-effect of training dynamics remains an open question. I measured dimensionality, not mutual information; confirming the information-theoretic interpretation would require measuring $I(X; T)$ and $I(T; Y)$ at each layer, which I did not do. (For the ongoing debate on whether DNNs exhibit information bottleneck compression, see Shwartz-Ziv & Tishby 2017 and Saxe et al. 2018's counterargument that compression depends on activation function choice.) What I can say is that the bottleneck's geometric effect is real and has measurable downstream consequences regardless of its cause.
+The architecture that emerges from training isn't a smooth pipeline. It's a sequence of radical geometric transformations separated by low-dimensional bottlenecks. An important caveat: I measured *geometry*, not *information*. The bottlenecks could be functional compression (actively discarding irrelevant features, as the information bottleneck principle of Tishby et al. 2000 would predict), or they could be a geometric side-effect of training dynamics — gradient flow naturally creating low-rank regions. Distinguishing these hypotheses would require measuring mutual information $I(X; T)$ and $I(T; Y)$ at each layer, which I did not do. (The debate is ongoing: Shwartz-Ziv & Tishby 2017 argue for IB compression in DNNs; Saxe et al. 2018 show it depends on activation function choice.) What I *can* say is that the bottleneck's geometric effect is real and has measurable downstream consequences — the practical recipes in Part V hold regardless of which interpretation is correct.
 
-These findings also connect to recent work in mechanistic interpretability. The "residual stream" framing (Elhage et al., 2021) treats each layer as writing to a shared communication channel — the phase structure above shows that what gets written changes character dramatically across depth. The layer-pruning literature (Men et al., 2024; Gromov et al., 2024) has found that middle layers are often removable — the linearization paradox offers a geometric explanation for *why* some layers resist removal despite appearing redundant by local metrics.
+These findings also connect to recent work in mechanistic interpretability. The "residual stream" framing (Elhage et al., 2021) treats each layer as writing to a shared communication channel — the phase structure above shows that what gets written changes character dramatically across depth. The layer-pruning literature (Men et al., 2024; Gromov et al., 2024) has found that middle layers are often removable — the linearization paradox offers a geometric explanation for *why* some layers resist removal despite appearing redundant by local metrics. The connections run deeper.
+
+---
+
+## Part VI: Where Geometry Meets Interpretability
+
+The experiments above measure transformer internals *from the outside* — probing geometry, spectral structure, and stress-testing with compression. A parallel line of research approaches the same layers *from the inside*, tracing individual features and circuits. The two perspectives converge in ways that sharpen both.
+
+*The connections in this section are interpretive — I'm drawing parallels between my geometric measurements and others' mechanistic findings, not demonstrating causal links. But the convergence is striking enough to be worth spelling out.*
+
+### The Bottleneck as a Superposition Chokepoint
+
+Anthropic's [Scaling Monosemanticity](https://transformer-circuits.pub/2024/scaling-monosemanticity/index.html) work (Templeton et al., 2024) shows that the residual stream represents concepts as sparse linear directions — ~300 features active per token out of millions possible. The participation ratio measures the same quantity from the geometric side: how many independent directions carry variance at each layer.
+
+At layer 16, PR = 2.3. In the language of superposition, the model is squeezing its entire intermediate representation through ~2 effective dimensions. Whatever features remain distinguishable in this near-one-dimensional space are all the remaining 19 layers have to work with.
+
+But how much can 2.3 dimensions actually hold? More than you'd think. The [abliteration](https://huggingface.co/blog/mlabonne/abliteration) technique (Labonne, 2024) demonstrates that safety-trained refusal in Llama 3 is mediated by *one* direction in the residual stream. The math is elegant — extract the refusal direction, then orthogonalize the weights against it:
+
+$$\hat{r} = \frac{\overline{h}_\text{harmful} - \overline{h}_\text{harmless}}{\lVert \overline{h}_\text{harmful} - \overline{h}_\text{harmless} \rVert} \qquad W' = W - (W \hat{r})\hat{r}^\top$$
+
+A rank-1 spectral modification permanently disables an entire behavioral mode without retraining. If one direction can encode "refuse," then 2.3 effective dimensions at our bottleneck represent far more information capacity than the raw number suggests. The superposition hypothesis says models pack features into nearly-orthogonal directions; our PR measurements show *how tightly* they pack at each depth.
+
+This same contrastive operation — comparing activations between contrasting inputs to find meaningful directions — is at the core of our contrastive completion trajectories experiment (T-17). We tracked how paired completions (antonyms like "star" vs "planet," synonyms, style variants) diverge geometrically across depth. Early layers separate antonyms more than synonyms (semantic processing); late layers reverse this (form commitment). The residual stream's geometry carries *meaning* before it carries *tokens*.
+
+### The Linearization Gap — From Both Sides
+
+Our finding that R² = 0.997 layers achieve only 54% CE recovery has a direct parallel in Anthropic's [circuit tracing](https://transformer-circuits.pub/2025/attribution-graphs/methods.html) work (Ameisen et al., 2025). Their method linearizes the transformer by freezing attention patterns and normalization, replacing MLPs with sparse linear features. The result: ~50% next-token prediction match and 21.7% reconstruction error for Claude 3.5 Haiku. Our per-layer replacements tell the same story — roughly half of model behavior is captured by linear approximation. The other half is where the interesting computation lives.
+
+Why does linearization partially work? Because most inter-feature interactions in the residual stream *are* linear — features combine via addition. The nonlinearity is concentrated in MLP activations (SwiGLU), attention patterns (softmax), and normalization (RMSNorm). Our perturbation gap confirms this: the gap is MLP-driven (r = −0.74 for up_proj rank vs gap), while attention matrices show no rank-gap correlation. The nonlinearity that breaks linearization is the same nonlinearity that makes circuits hard to trace: SwiGLU's multiplicative gate.
+
+This predicts where circuit tracing should struggle most. Layer 35 — the dispersal mechanism — has the highest MLP perturbation gap in the model (0.249). The circuit tracing work reports that "error nodes" (unexplained computation) accumulate in late layers. A layer that actively opposes the entire accumulated residual via hard nonlinear computation is exactly the kind of operation that resists decomposition into sparse linear features — geometrically essential, mechanistically opaque.
+
+### Why Quantization Breaks What It Breaks
+
+The superposition framework explains our quantization sensitivity hierarchy. If features are nearly-orthogonal directions packed into the residual stream, quantization noise — which perturbs *all* directions simultaneously — threatens features that rely on fine angular distinctions.
+
+Q/K matrices are nearly immune (25–38% effective rank provides built-in redundancy), while gate_proj is 50× more sensitive. The asymmetry makes sense: Q/K perform low-dimensional *routing* that requires only coarse directional matching. The [linebreaks paper](https://transformer-circuits.pub/2025/linebreaks/index.html) (Gurnee et al., 2025) shows that attention QK matrices perform geometric rotations between low-dimensional manifolds — robust to small perturbations. The MLP gate performs high-dimensional *feature selection* through SiLU and multiplicative interaction, amplifying small errors nonlinearly. Expressiveness and fragility are two sides of the same coin.
+
+The early-layer catastrophe (layer 2 at 2-bit → +3,828 PPL) also fits: Anthropic's [Tracing Thoughts](https://www.anthropic.com/research/tracing-thoughts-language-model) work (Anthropic, 2025) shows that early-layer features — detokenization, language detection, entity recognition — are the most broadly shared inputs to every downstream circuit. Corrupt these with quantization noise and the error compounds through all 34 remaining layers. As a bonus, that work also reveals that hallucination arises from a specific circuit failure: refusal is the *default* state, and a "known entity" circuit must actively inhibit it. Hallucination happens when this inhibitory circuit weakly activates on partially-familiar entities — which may explain why abliteration's rank-1 removal is so effective: it only needs to erase the single direction the default refusal circuit writes to.
+
+---
+
+These connections aren't just theoretical — they provide mechanistic justification for the practical recipes in Part V. Skip the bottleneck for LoRA because there are too few active feature directions at PR = 2.3 for adaptation to modify. Protect early layers from quantization because they build the shared features every downstream circuit reads from. Give the dispersal layer extra precision because its hard nonlinear computation resists the linear approximation that quantization implicitly performs. The geometry tells you *where* to intervene; the interpretability tells you *why*.
 
 And somewhere in the 0.3% of variance that your linear approximation misses, the model is hiding almost half of what it knows.
 
