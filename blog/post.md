@@ -8,19 +8,19 @@ Every ML engineer has the same mental model of a transformer: tokens go in, laye
 
 **It's also missing most of the picture.**
 
-I ran a series of experiments dissecting Qwen3-4B, a 4-billion parameter transformer — measuring the SVD of all 252 weight matrices, computing Jacobians at every layer, tracking the geometry of 4,094 tokens as they flow through all 36 layers, and stress-testing every layer with quantization down to 2-bit precision. What I found looks nothing like the textbook picture.
+I decided to find out what's actually going on. I took Qwen3-4B — a 4-billion parameter transformer — and dissected it: SVD of every weight matrix, Jacobians at every layer, tracking thousands of tokens as they flow through the network, and stress-testing the whole thing with quantization down to 2 bits. What I found looks nothing like the textbook picture.
 
-At layer 16, your 2560-dimensional hidden state collapses to **2.3 effective dimensions**. A single axis explains two-thirds of all variance. Geometrically, the representation is passing through a near-singular bottleneck — almost all distinguishing structure lives on a single axis.
+Halfway through the network, your 2560-dimensional hidden state collapses to **2.3 effective dimensions**. A single axis explains two-thirds of all variance. The representation is passing through a near-singular bottleneck — almost all distinguishing structure squeezed onto one axis.
 
-And then it gets weirder: a layer with R² = 0.997 between its outputs and a fitted linear replacement recovers only 54% of model quality when you actually swap it in. A linear map captures 99.7% of a layer's activation variance — and the 0.3% it misses is responsible for almost half the downstream loss impact. Layers that look linear aren't safely replaceable; the nonlinear sliver carries the computation that matters.
+It gets weirder. I tried replacing individual layers with the best linear approximation I could fit. One layer matched 99.7% of the original activations — and recovered only 54% of model quality. The 0.3% the linear map misses is responsible for almost half the downstream loss. Layers that *look* linear aren't safely replaceable; the nonlinear sliver is where the real computation hides.
 
-This post presents four convergent lines of evidence — with supporting validation from layer knockouts, logit lens, LoRA fine-tuning, and contrastive trajectory analysis — that the standard understanding of transformer internals is, if not wrong, at least dangerously incomplete.
+What follows is four experiments that keep arriving at the same conclusion from different angles — the standard understanding of transformer internals is, if not wrong, at least dangerously incomplete.
 
 ---
 
 ## The Model Under the Microscope
 
-Before diving into the experiments, a brief orientation on the model I dissected. [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) is a 4-billion parameter decoder-only transformer:
+First, the model. [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) is a 4-billion parameter decoder-only transformer:
 
 | Component | Detail |
 |-----------|--------|
@@ -33,7 +33,7 @@ Before diving into the experiments, a brief orientation on the model I dissected
 | **Position encoding** | RoPE (Rotary Position Embedding) |
 | **Embedding** | Tied — the same 151,936 × 2560 matrix serves as both input embedding and output (LM) head |
 
-Each layer reads from and writes back to a shared **residual stream** — the running sum of all previous layers' outputs plus the original token embedding. When this post refers to "the hidden state at layer $\ell$," it means that cumulative sum after $\ell$ layers have contributed. Concretely, each layer computes:
+Each layer reads from and writes back to a shared **residual stream** — the running sum of all previous layers' outputs plus the original token embedding. When I say "the hidden state at layer $\ell$," I mean that cumulative sum after $\ell$ layers have contributed. Concretely, each layer computes:
 
 $$h' = h_\ell + W_O \cdot \text{GQA}(W_Q \hat{h}, W_K \hat{h}, W_V \hat{h}) \quad \text{where} \quad \hat{h} = \text{RMSNorm}(h_\ell)$$
 
@@ -118,7 +118,7 @@ To see why layer 16 is a "pinhole," look at the actual singular value spectra:
 ![Singular Value Spectra](images/fig_sv_spectra.png)
 *Figure 3. Singular value spectra at three representative layers. Layer 10 (distributed processing) spreads variance across many dimensions — a healthy, high-dimensional representation. Layer 16 (the bottleneck) concentrates 67% of all variance on a single axis. Layer 35 (dispersal) is high-dimensional again but with a different spectral shape. Dashed line shows cumulative variance.*
 
-The second bottleneck is especially important. At layer 16, variance concentrates so heavily that a single axis explains 67% of all token variation — the representation is still 2560-dimensional, but almost all distinguishing signal lives on 2–3 axes. Whatever structure survives this compression is all the remaining 19 layers have to work with. This has profound consequences for fine-tuning, pruning, and any technique that freezes part of the network — as I'll show in Part VI.
+The second bottleneck is especially important. At layer 16, variance concentrates so heavily that a single axis explains 67% of all token variation — the representation is still 2560-dimensional, but almost all distinguishing signal lives on 2–3 axes. Whatever structure survives this compression is all the remaining 19 layers have to work with. This matters for fine-tuning, pruning, and anything that freezes part of the network — as I'll show in Part VI.
 
 ### The Embedding Is Erased by Layer 5
 
@@ -153,7 +153,7 @@ A separate experiment (logit lens) confirms this from the prediction side: proje
 
 ## Part II: The Linearization Paradox
 
-Here's where the data starts to challenge practitioner intuition.
+This is where the data starts to get uncomfortable.
 
 ### Measuring Nonlinearity: The Perturbation Gap
 
@@ -213,7 +213,7 @@ Layers 11 and 15–18 have a gap ratio ≥ 1.0 — they are **more nonlinear alo
 
 And then error amplification through depth makes it worse: a 13% error at layer 16 propagates through 19 subsequent layers, along directions that downstream layers are tuned to be sensitive to. Small in norm, large in informational content.
 
-A quantization experiment (below) provides direct empirical confirmation: the linearity gap correlates with quantization sensitivity at $\rho = 0.71$ ($p < 0.0001$) for the MLP component specifically. Layers the gap flags as "nonlinear" are precisely the ones that break under aggressive quantization — and layers it flags as "linear" survive. The linearization paradox isn't an artifact of the replacement method; it shows up in a completely independent perturbation type.
+A quantization experiment (below) backs this up independently: the linearity gap correlates with quantization sensitivity at $\rho = 0.71$ ($p < 0.0001$) for the MLP component specifically. Layers the gap flags as "nonlinear" are precisely the ones that break under aggressive quantization — and layers it flags as "linear" survive. The linearization paradox isn't an artifact of the replacement method; it shows up in a completely independent perturbation type.
 
 ---
 
@@ -238,7 +238,7 @@ The **effective rank ratio** applies the same participation ratio formula to the
 ![Routing vs Content](images/fig4_routing_vs_content.png)
 *Figure 8. Left: effective rank ratio across depth for three functional groups. Routing (Q/K) is consistently lowest. Right: average capacity usage by matrix type. Q-projection uses only 25% of its available capacity.*
 
-The results reveal a clean functional hierarchy:
+There's a clean hierarchy:
 
 | Matrix Group | Mean Rank Ratio | Interpretation |
 |---|---|---|
@@ -299,11 +299,11 @@ The update correlation matrix (Exp. 1) shows three clear blocks: early (L0–5),
 - The perturbation gap transitions (Exp. 2)
 - The weight rank plateau/late split (Exp. 3, confirmed via Welch's t-test: p < 0.05 for 4/7 matrices)
 
-The transformer isn't 36 interchangeable layers. It's three functional modules with distinct geometric roles, bookended by singular layers (L0 and L35) that perform unique transformations.
+The transformer isn't 36 interchangeable layers. It's three functional modules with distinct geometric roles, with L0 and L35 doing something entirely their own at each end.
 
 ### Quantization Sensitivity Confirms the Phase Structure
 
-A fourth experiment — per-layer quantization sensitivity — provides independent confirmation from a completely different perturbation type. Instead of replacing layers with linear maps, I quantized each layer's weights individually to 2-bit precision and measured perplexity impact:
+A fourth experiment comes at this from a completely different angle. Instead of replacing layers with linear maps, I quantized each layer's weights individually to 2-bit precision and measured perplexity impact:
 
 ![Linearity Gap Predicts Quantization Sensitivity](images/fig10_quant_sensitivity.png)
 *Figure 11. The linearity gap (red line, left axis) and 2-bit quantization sensitivity (blue bars, right axis, log scale) track each other across depth ($\rho = 0.68$, $p < 0.0001$). Early layers (L0–3) are catastrophically sensitive — quantizing layer 2 alone increases perplexity by 3,828. Mid-layers (L8–20) absorb even 2-bit quantization with less than 1 PPL impact. Phase bands match those identified independently by the geometry and spectral experiments.*
@@ -333,13 +333,13 @@ A rank-1 spectral modification permanently disables an entire behavioral mode wi
 
 Now consider what happens at the bottleneck. Across layers 16–24, the participation ratio collapses to 2.3–17, meaning the *variance* across tokens concentrates onto a handful of axes. The representations still live in 2,560-dimensional space — other directions still carry information — but the signal-to-noise ratio on those minor axes drops dramatically. If features are encoded as individual directions, and the model can lose an entire behavioral mode by corrupting just one of them, then the bottleneck is where superposition is most *fragile*: hundreds of features must remain distinguishable despite variance concentrating onto 2–3 dominant axes.
 
-This explains the experimental findings from the inside. The linearization paradox — R² = 0.997 but only 54% CE recovery — makes sense: a linear map captures the dominant variance axes perfectly but smears the low-variance directions where feature distinctions live. The LoRA finding — the bottleneck works best frozen — also follows: adding new adaptation directions into a space where existing features are packed to maximum density risks overwriting the precise angular relationships that superposition depends on. And quantization sensitivity peaks in early layers, not the bottleneck itself, because early features are the shared *inputs* to every downstream circuit — corrupt them, and the error compounds through the bottleneck's tight packing.
+Now the earlier findings click into place. The linearization paradox — R² = 0.997 but only 54% CE recovery — makes sense: a linear map captures the dominant variance axes perfectly but smears the low-variance directions where feature distinctions live. The LoRA finding — the bottleneck works best frozen — also follows: adding new adaptation directions into a space where existing features are packed to maximum density risks overwriting the precise angular relationships that superposition depends on. And quantization sensitivity peaks in early layers, not the bottleneck itself, because early features are the shared *inputs* to every downstream circuit — corrupt them, and the error compounds through the bottleneck's tight packing.
 
 There's also direct evidence that directions carry semantic content. Tracking how paired completions (antonyms like "star" vs "planet," synonyms, style variants) diverge geometrically across depth, early layers separate antonyms more than synonyms (semantic processing), while late layers reverse this (form commitment). The residual stream's geometry carries *meaning* before it carries *tokens*.
 
 ### The Linearization Gap — From Both Sides
 
-The finding that R² = 0.997 layers achieve only 54% CE recovery has a direct parallel in Anthropic's [circuit tracing](https://transformer-circuits.pub/2025/attribution-graphs/methods.html) work (Ameisen et al., 2025). Their method linearizes the transformer by freezing attention patterns and normalization, replacing MLPs with sparse linear features. The result: ~50% next-token prediction match and 21.7% reconstruction error for Claude 3.5 Haiku. The per-layer replacements tell the same story — roughly half of model behavior is captured by linear approximation. The other half is where the interesting computation lives.
+Anthropic's own work lands in the same place. Their [circuit tracing](https://transformer-circuits.pub/2025/attribution-graphs/methods.html) method (Ameisen et al., 2025) linearizes the transformer by freezing attention patterns and normalization, replacing MLPs with sparse linear features. The result: ~50% next-token prediction match and 21.7% reconstruction error for Claude 3.5 Haiku. The per-layer replacements tell the same story — roughly half of model behavior is captured by linear approximation. The other half is where the interesting computation lives.
 
 Why does linearization partially work? Because most inter-feature interactions in the residual stream *are* linear — features combine via addition. The nonlinearity is concentrated in MLP activations (SwiGLU), attention patterns (softmax), and normalization (RMSNorm). The perturbation gap confirms this: the gap is MLP-driven (r = −0.74 for up_proj rank vs gap), while attention matrices show no rank-gap correlation. The nonlinearity that breaks linearization is the same nonlinearity that makes circuits hard to trace: SwiGLU's multiplicative gate.
 
@@ -347,7 +347,7 @@ This predicts where circuit tracing should struggle most. Layer 35 — the dispe
 
 ### Why Quantization Breaks What It Breaks
 
-The superposition framework explains the quantization sensitivity hierarchy. If features are nearly-orthogonal directions packed into the residual stream, quantization noise — which perturbs *all* directions simultaneously — threatens features that rely on fine angular distinctions.
+Superposition also explains why quantization hurts where it does. If features are nearly-orthogonal directions packed into the residual stream, quantization noise — which perturbs *all* directions simultaneously — threatens features that rely on fine angular distinctions.
 
 Q/K matrices are nearly immune (25–38% effective rank provides built-in redundancy), while gate_proj is ~58× more sensitive. The asymmetry makes sense: Q/K perform low-dimensional *routing* that requires only coarse directional matching. The [linebreaks paper](https://transformer-circuits.pub/2025/linebreaks/index.html) (Gurnee et al., 2025) shows that attention QK matrices perform geometric rotations between low-dimensional manifolds — robust to small perturbations. The MLP gate performs high-dimensional *feature selection* through SiLU and multiplicative interaction, amplifying small errors nonlinearly. Expressiveness and fragility are two sides of the same coin.
 
@@ -359,11 +359,11 @@ The "residual stream" framing (Elhage et al., 2021) treats each layer as writing
 
 ## Part VI: Practical Implications
 
-The geometry tells you *where* to intervene; the interpretability tells you *why*. Here's what the combined picture says you should do differently.
+The geometry tells you *where* to intervene; the interpretability tells you *why*. Here's what it all means in practice.
 
 ### 1. Don't Trust Activation-Space Metrics for Pruning Decisions
 
-This is the most broadly applicable finding. If you're evaluating whether to compress, prune, or replace a layer, **R² between original and replacement activations tells you almost nothing about downstream impact**. Layer 6's 0.3% residual corresponds to nearly half the downstream loss degradation. The only reliable metric is end-to-end evaluation (CE loss, task accuracy). This applies to LoRA, distillation, quantization, and pruning equally. The quantization experiment shows this concretely: a spectral-informed mixed-precision recipe that assigns fewer bits to low-rank layers — seemingly logical — causes a 13,000× perplexity increase because it puts 2-bit on early layers that are structurally simple but positionally critical.
+If you take one thing from this post, make it this. If you're evaluating whether to compress, prune, or replace a layer, **R² between original and replacement activations tells you almost nothing about downstream impact**. Layer 6's 0.3% residual corresponds to nearly half the downstream loss degradation. The only reliable metric is end-to-end evaluation (CE loss, task accuracy). This applies to LoRA, distillation, quantization, and pruning equally. The quantization experiment shows this concretely: a spectral-informed mixed-precision recipe that assigns fewer bits to low-rank layers — seemingly logical — causes a 13,000× perplexity increase because it puts 2-bit on early layers that are structurally simple but positionally critical.
 
 Layer knockouts tell the same story: layer 0 (99.6× loss increase), layer 6 (21.7×, appears in 4/5 most critical synergistic pairs), and layer 35 (the dispersal mechanism). None of these are layers you'd flag as "important" by looking at activation variance or perturbation gap alone.
 
@@ -397,7 +397,7 @@ For efficient fine-tuning: **skip the bottleneck layers** and concentrate LoRA o
 
 ### 5. Quantize Everything — Except the Gate and the Endpoints
 
-Per-matrix quantization sensitivity reveals a clear hierarchy of compressibility:
+Not all weight matrices are created equal when it comes to compression:
 
 ![Per-Matrix Quantization Sensitivity](images/fig11_quant_matrix.png)
 *Figure 14. Left: Mean PPL impact of 3-bit quantization per matrix type. gate_proj (the SwiGLU gate) is ~58x more sensitive than attention routing matrices. Right: gate_proj sensitivity by layer — layer 2's gate alone causes +7.9 PPL at 3-bit.*
