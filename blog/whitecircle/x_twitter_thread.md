@@ -4,7 +4,7 @@
 
 **Tweet 1**
 
-Someone took Qwen3-4B apart. SVD of all 252 weight matrices, Jacobians at every layer, thousands of tokens tracked through the network.
+Someone (us 👀) took Qwen3-4B apart. SVD of all 252 weight matrices, Jacobians at every layer, thousands of tokens tracked through the network.
 
 Halfway through, the 2560-dimensional hidden state collapses to 2.3 effective dimensions. One axis carries 67% of all variance. Everything the model knows gets squeezed through a near-singular pinhole.
 
@@ -16,7 +16,7 @@ The textbook says "gradual refinement across layers." The data says something el
 
 The model goes through six geometric phases:
 
-Layer 0 erases the input embedding (cosine similarity with input drops to 0.11) and doubles dimensionality. Layers 1-5 crush it down to 6 effective dimensions. Layers 6-15 expand back to 200 — this is where the real distributed processing happens.
+Layer 0 erases the input embedding (cosine similarity with input drops to 0.11) and doubles dimensionality. Layers 1-5 crush it down to 6 effective dimensions. Layers 6-15 expand back to 200, this is where the real distributed processing happens.
 
 Then layers 16-24 squeeze everything through that 2.3-dimension bottleneck again. A single axis explains two-thirds of all token variation.
 
@@ -80,7 +80,7 @@ Engineering takeaways worth pinning:
 
 4-bit quantization is lossless per-layer (<0.1 PPL). The cliff is 3-bit to 2-bit. Layer 2 alone at 2-bit: +3,828 perplexity. A spectral-informed mixed-precision scheme that seemed smart caused a 13,000x PPL increase — it put 2-bit on early layers because they looked "simple." They're simple AND critical. Errors at layer 2 propagate through 34 subsequent layers.
 
-LoRA: skip layers 16-24 (the bottleneck). Features are packed at maximum density there — new adaptation directions corrupt existing ones. Phase-aware allocation hit 80.5% OOD vs 78.0% uniform. Adapting just L25-35 (10M params) matched full 33M-param LoRA.
+LoRA: skip layers 16-24 (the bottleneck). Features are packed at maximum density there, new adaptation directions corrupt existing ones. Phase-aware allocation hit 80.5% OOD vs 78.0% uniform. Adapting just L25-35 (10M params) matched full 33M-param LoRA.
 
 ---
 
@@ -92,7 +92,7 @@ Destroy the embedding. Compress to 6 dimensions. Expand and process. Compress ag
 
 Not a smooth pipeline. Not gradual refinement. A sequence of radical geometric transformations separated by information bottlenecks where the model is most vulnerable.
 
-We spend a lot of time at @WhiteCircle thinking about what's load-bearing inside these models. When you're deploying LLMs into finance, healthcare, security — understanding where the fragile channels are isn't optional. It's the whole game.
+We spend a lot of time at @WhiteCircle thinking about what's load-bearing inside these models. When you're deploying LLMs into finance, healthcare, security, understanding where the fragile channels are isn't optional. It's the whole game.
 
 Research by @hivaze. Reproduction scripts: github.com/hivaze/dl-experiments
 
