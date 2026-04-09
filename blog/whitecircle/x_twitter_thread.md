@@ -4,7 +4,7 @@
 
 **Tweet 1**
 
-Someone (us 👀) took Qwen3-4B apart. SVD of all 252 weight matrices, Jacobians at every layer, thousands of tokens tracked through the network.
+Someone (we 👀) took Qwen3-4B apart. SVD of all 252 weight matrices, Jacobians at every layer, thousands of tokens tracked through the network.
 
 Halfway through, the 2560-dimensional hidden state collapses to 2.3 effective dimensions. One axis carries 67% of all variance. Everything the model knows gets squeezed through a near-singular pinhole.
 
