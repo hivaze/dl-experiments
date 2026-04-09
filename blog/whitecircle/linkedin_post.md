@@ -3,7 +3,7 @@
 "The 0.3% of variance your linear approximation misses? That's where half the model's knowledge lives."
 — hivaze, dissecting Qwen3-4B
 
-Alex and the Research Team have just dropped their latest blog post and it's one of those posts where you read it and go — yeah, this is what we're building towards at White Circle. Understanding what's actually happening inside these models. Not the textbook version. The real version.
+Alex and the Research Team have just dropped their latest blog post and it's one of those posts where you read it and go - yeah, this is what we're building towards at White Circle. Understanding what's actually happening inside these models. Not the textbook version. The real version.
 
 The paper is a full dissection of a 4B-parameter transformer. Four experiments. 252 weight matrices. What they found:
 
