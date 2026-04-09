@@ -1,4 +1,4 @@
-# Transformers Don't Compute — They Compress, Explode, and Self-Destruct
+# Transformers Don't Compute - They Compress, Explode, and Self-Destruct
 
 *A layer-by-layer dissection of what actually happens inside a 4B-parameter transformer, and why it matters for building better AI systems.*
 
@@ -8,7 +8,7 @@ Everyone has the same mental model of a transformer: tokens go in, layers refine
 
 It's also missing most of the picture.
 
-We took Qwen3-4B — a 4-billion parameter transformer — and dissected it. SVD of every weight matrix, Jacobians at every layer, tracking thousands of tokens through the network, stress-testing with quantization down to 2 bits. Four experiments, 252 weight matrices, one goal: find out what's actually going on inside.
+We took Qwen3-4B, a 4-billion parameter transformer, and dissected it. SVD of every weight matrix, Jacobians at every layer, tracking thousands of tokens through the network, stress-testing with quantization down to 2 bits. Four experiments, 252 weight matrices, one goal: find out what's actually going on inside.
 
 What we found looks nothing like the textbook.
 
@@ -16,7 +16,7 @@ What we found looks nothing like the textbook.
 
 ## The Model
 
-[Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) is a 4-billion parameter decoder-only transformer. 36 layers, hidden dimension of 2560, Grouped Query Attention, SwiGLU MLP, RoPE embeddings. Every layer is architecturally identical — same structure, same dimensions, same parameter count (~101M each).
+[Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) is a 4-billion parameter decoder-only transformer. 36 layers, hidden dimension of 2560, Grouped Query Attention, SwiGLU MLP, RoPE embeddings. Every layer is architecturally identical. Same structure, same dimensions, same parameter count (~101M each).
 
 Nothing in the blueprint distinguishes layer 0 from layer 35. The learned weights tell a very different story.
 
@@ -26,7 +26,7 @@ Nothing in the blueprint distinguishes layer 0 from layer 35. The learned weight
 
 The standard picture says representations are gradually refined across layers. The data says the residual stream goes through six distinct geometric phases, including two near-singular bottlenecks where information gets squeezed down to a handful of dimensions.
 
-We used Singular Value Decomposition (SVD) and a metric called Participation Ratio (PR) to measure how many dimensions the model actually uses at each layer. PR tells you the effective number of active dimensions — if all information sits on one axis, PR = 1. If it's spread across k axes equally, PR = k. No arbitrary cutoffs needed.
+We used Singular Value Decomposition (SVD) and a metric called Participation Ratio (PR) to measure how many dimensions the model actually uses at each layer. PR tells you the effective number of active dimensions, if all information sits on one axis, PR = 1. If it's spread across k axes equally, PR = k. No arbitrary cutoffs needed.
 
 The hidden dimension is 2560. Here's how many dimensions the model *actually uses*:
 
@@ -34,8 +34,8 @@ The hidden dimension is 2560. Here's how many dimensions the model *actually use
 |-------|--------|--------------------------|--------------|
 | Expansion | 0 | 73 → 125 | Layer 0 *erases* the input embedding and doubles dimensionality |
 | First Compression | 1–5 | 6–43 | Representations collapse to as few as 6 effective dimensions |
-| Distributed Processing | 6–15 | 147–205 | Recovery to high dimensionality — the real work happens here |
-| Second Compression | 16–24 | 2.3–17 | The Keyhole — PR drops to 2.3. One axis explains 67% of all variance |
+| Distributed Processing | 6–15 | 147–205 | Recovery to high dimensionality - the real work happens here |
+| Second Compression | 16–24 | 2.3–17 | The Keyhole - PR drops to 2.3. One axis explains 67% of all variance |
 | Output Preparation | 25–34 | 24–127 | Norms explode from 139 to 571; all tokens point the same direction |
 | Dispersal | 35 | 160 | Layer 35 *actively opposes* everything before it, breaking the pattern |
 
@@ -44,7 +44,7 @@ This is not gradual refinement. It's destroy → compress → expand → compres
 Out of 2560 available dimensions, the model squeezes everything down to 2.3 at layer 16. Whatever survives this bottleneck is all the remaining 19 layers have to work with. If you prune, fine-tune, or compress the wrong layers, you corrupt what passes through this pinhole and the whole model degrades.
 
 [![The Dimensionality Bottleneck](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig3_bottleneck.png)](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig3_bottleneck.png)
-*Figure 1. Left: Participation ratio across depth, with two bottleneck regions highlighted in red. At layer 16, PR = 2.3 — nearly one-dimensional. Right: each layer's signed contribution to the final representation.*
+*Figure 1. Left: Participation ratio across depth, with two bottleneck regions highlighted in red. At layer 16, PR = 2.3, nearly one-dimensional. Right: each layer's signed contribution to the final representation.*
 
 ### The embedding is erased by layer 5
 
@@ -52,14 +52,14 @@ The cosine similarity between each layer's output and the original embedding dro
 
 ### Layer 35: The dispersal mechanism
 
-The final layer does something no other layer does. Every layer from 18 to 34 reinforces the residual — their updates point in roughly the same direction as the accumulated representation. Then layer 35 arrives and actively opposes it with a cosine alignment of −0.73.
+The final layer does something no other layer does. Every layer from 18 to 34 reinforces the residual, their updates point in roughly the same direction as the accumulated representation. Then layer 35 arrives and actively opposes it with a cosine alignment of −0.73.
 
 The result: norms drop from 571 to 388, and mean cosine similarity between tokens plummets from 0.63 to 0.09. Before this layer, tokens are packed in a tight directional cone and are nearly indistinguishable. After it, they're spread out and the output head can finally tell them apart.
 
-Skip this layer and tokens stay at 0.63 cosine similarity — the model cannot discriminate between them. Layer 35 is not refining. It's creating the separation the output head needs to function. Any architecture change that shares, skips, or compresses the final layer needs an alternative dispersal mechanism, or predictions become mush.
+Skip this layer and tokens stay at 0.63 cosine similarity - the model cannot discriminate between them. Layer 35 is not refining. It's creating the separation the output head needs to function. Any architecture change that shares, skips, or compresses the final layer needs an alternative dispersal mechanism, or predictions become mush.
 
 [![The Dispersal Mechanism](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig6_self_destruct.png)](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig6_self_destruct.png)
-*Figure 2. Layer 35 is unique. Left: mean cosine similarity between tokens drops from 0.63 to 0.09. Center: norms drop despite the largest update in the model. Right: update-residual alignment is strongly negative — the only layer that pushes against everything before it.*
+*Figure 2. Layer 35 is unique. Left: mean cosine similarity between tokens drops from 0.63 to 0.09. Center: norms drop despite the largest update in the model. Right: update-residual alignment is strongly negative - the only layer that pushes against everything before it.*
 
 ### Where predictions actually come from
 
@@ -82,7 +82,7 @@ The assumption was that good fit means good replacement. It's spectacularly wron
 |-------|---------------------|------------------------------|-----------------|
 | Layer 6 | 0.997 (99.7% fit) | 54% | The 0.3% the linear map misses = nearly half the downstream loss |
 | Layer 16 | 0.768 | 37% (worst) | The map actively misleads downstream computation |
-| Layer 0 | 0.787 | 98% | Lower fit but near-perfect replacement — dominant embedding projection overwhelms the nonlinear variation |
+| Layer 0 | 0.787 | 98% | Lower fit, but near-perfect replacement - dominant embedding projection overwhelms the nonlinear variation |
 
 Only 15 of 36 layers achieve ≥73% CE recovery. The middle-to-late layers (16–33) resist linearization despite appearing locally smooth.
 
@@ -93,7 +93,7 @@ R² = 0.997 sounds like a perfect fit. But the 0.3% it misses is where nearly ha
 
 ### Nonlinearity follows a U-shape
 
-We expected early layers to be linear (simple token mixing) and late layers to be nonlinear (complex composition). Wrong. Nonlinearity is highest at both ends (layers 0–1 and 33–35) and lowest in the middle (layers 8–18, ~87% linear). The most nonlinear single component is layer 35's MLP — the dispersal mechanism requires hard nonlinear computation.
+We expected early layers to be linear (simple token mixing) and late layers to be nonlinear (complex composition). Wrong. Nonlinearity is highest at both ends (layers 0–1 and 33–35) and lowest in the middle (layers 8–18, ~87% linear). The most nonlinear single component is layer 35's MLP, the dispersal mechanism requires hard nonlinear computation.
 
 ### Why "locally linear" doesn't mean "globally replaceable"
 
@@ -102,23 +102,23 @@ The hidden state manifold has an effective dimensionality of only ~18 (out of 25
 Error amplification through depth makes it worse: a 13% error at layer 16 propagates through 19 subsequent layers, along directions that downstream layers are tuned to be sensitive to. Small in norm. Large in informational content.
 
 [![PCA-Aligned Gap](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig_pca_gap.png)](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig_pca_gap.png)
-*Figure 5. Left: on-manifold vs off-manifold nonlinearity. Center: their ratio — values above 1.0 mean the model is more nonlinear along data-relevant directions. Right: the data manifold is only ~18-dimensional everywhere.*
+*Figure 5. Left: on-manifold vs off-manifold nonlinearity. Center: their ratio - values above 1.0 mean the model is more nonlinear along data-relevant directions. Right: the data manifold is only ~18-dimensional everywhere.*
 
 ---
 
 ## Part III: Routing Is Cheap, Thinking Is Expensive
 
-The third experiment looks at the layers' weight matrices themselves. Every layer has 7 weight matrices. We computed SVD on all 252 and measured effective rank — how much of their capacity each matrix actually uses.
+The third experiment looks at the layers' weight matrices themselves. Every layer has 7 weight matrices. We computed SVD on all 252 and measured effective rank - how much of their capacity each matrix actually uses.
 
 There's a clean hierarchy:
 
 | Matrix | Capacity Used | Role |
 |--------|--------------|------|
-| Q (query) | 25% | "Where should I look?" — low-dimensional address lookup |
-| K (key) | 38% | "What's at each position?" — slightly richer addressing |
-| V (value) | 61% | "What should I extract?" — high-dimensional content |
+| Q (query) | 25% | "Where should I look?" - low-dimensional address lookup |
+| K (key) | 38% | "What's at each position?" - slightly richer addressing |
+| V (value) | 61% | "What should I extract?" - high-dimensional content |
 | O (output) | 42% | Reassembling multi-head outputs |
-| MLP | 50–68% | The heavyweight processing — uses the most capacity |
+| MLP | 50–68% | The heavyweight processing - uses the most capacity |
 
 Q/K routing is low-rank in every single layer (36/36). "Where to attend" is a much simpler computation than "what to extract."
 
@@ -154,7 +154,7 @@ Instead of replacing layers with linear maps, we quantized each layer's weights 
 
 The linearity gap correlates with quantization sensitivity at ρ = 0.71 (p < 0.0001). Layers that are more nonlinear are also harder to quantize.
 
-The model is not 36 interchangeable layers. It's three functional modules with distinct geometric roles: an early processing block, a mid-depth distributed processing zone, and a late output preparation zone, with L0 and L35 doing something entirely their own at each end. Quantization, LoRA, pruning, distillation — they all need to respect this structure.
+The model is not 36 interchangeable layers. It's three functional modules with distinct geometric roles: an early processing block, a mid-depth distributed processing zone, and a late output preparation zone, with L0 and L35 doing something entirely their own at each end. Quantization, LoRA, pruning, distillation - they all need to respect this structure.
 
 [![Linearity Gap Predicts Quantization Sensitivity](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig10_quant_sensitivity.png)](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig10_quant_sensitivity.png)
 *Figure 8. Linearity gap (red) and 2-bit quantization sensitivity (blue bars, log scale) track each other across depth. Early layers are catastrophically sensitive. Mid-layers absorb even 2-bit quantization.*
@@ -169,21 +169,21 @@ The model is not 36 interchangeable layers. It's three functional modules with d
 
 ## Part V: Where Geometry Meets Interpretability
 
-Our experiments measure transformer internals from the outside — geometry, spectral structure, stress-testing. A parallel line of research from Anthropic and others approaches the same layers from the inside, tracing individual features and circuits. The two perspectives line up consistently.
+Our experiments measure transformer internals from the outside - geometry, spectral structure, stress-testing. A parallel line of research from Anthropic and others approaches the same layers from the inside, tracing individual features and circuits. The two perspectives line up consistently.
 
 ### The bottleneck as a superposition chokepoint
 
-The residual stream represents concepts as sparse linear directions — many more features than dimensions, encoded as nearly-orthogonal directions (superposition). Research on abliteration has shown that safety-trained refusal in Llama 3 is mediated by a single direction — orthogonalize it away and the behavior disappears. One direction, one behavior.
+The residual stream represents concepts as sparse linear directions, many more features than dimensions, encoded as nearly-orthogonal directions (superposition). Research on abliteration has shown that safety-trained refusal in Llama 3 is mediated by a single direction - orthogonalize it away and the behavior disappears. One direction, one behavior.
 
-At the bottleneck, variance concentrates onto 2–3 dominant axes. The representations still live in 2,560 dimensions — other directions still carry information — but the signal-to-noise ratio on minor axes drops dramatically. If features are individual directions and you can lose an entire behavioral mode by corrupting one of them, then the bottleneck is where superposition is most fragile.
+At the bottleneck, variance concentrates onto 2–3 dominant axes. The representations still live in 2,560 dimensions - other directions still carry information, but the signal-to-noise ratio on minor axes drops dramatically. If features are individual directions and you can lose an entire behavioral mode by corrupting one of them, then the bottleneck is where superposition is most fragile.
 
 This explains the linearization paradox: a linear map captures dominant variance axes perfectly but smears the low-variance directions where feature distinctions live. It also explains why the bottleneck works best frozen during LoRA: adding new adaptation directions into a space at maximum feature density risks overwriting the precise angular relationships superposition depends on.
 
 ### The linearization gap from both sides
 
-Anthropic's circuit tracing work linearizes the transformer by freezing attention patterns and normalization, replacing MLPs with sparse linear features. Their result: ~50% next-token prediction match. Our per-layer replacements tell the same story — roughly half of model behavior is captured by linear approximation. The other half is where the interesting computation lives.
+Anthropic's circuit tracing work linearizes the transformer by freezing attention patterns and normalization, replacing MLPs with sparse linear features. Their result: ~50% next-token prediction match. Our per-layer replacements tell the same story, roughly half of model behavior is captured by linear approximation. The other half is where the interesting computation lives.
 
-Why does linearization partially work? Because most inter-feature interactions in the residual stream are linear — features combine via addition. The nonlinearity is concentrated in MLP activations (SwiGLU), attention patterns (softmax), and normalization (RMSNorm).
+Why does linearization partially work? Because most inter-feature interactions in the residual stream are linear - features combine via addition. The nonlinearity is concentrated in MLP activations (SwiGLU), attention patterns (softmax), and normalization (RMSNorm).
 
 The geometric measurements and the mechanistic interpretability research independently converge on the same picture. The residual stream carries meaning as precise directional relationships. The bottleneck is where those relationships are most fragile. Understanding this geometry tells you exactly where compression, fine-tuning, and architectural modifications will succeed or fail.
 
@@ -207,30 +207,30 @@ Any architecture change that shares, skips, or compresses the final layer needs 
 
 Standard practice: same LoRA rank everywhere. The spectral data says this wastes parameters.
 
-Q/K in early/mid layers (0–16) need rank 8–16 at most. Already at 23–36% effective rank — adding parameters here buys nothing. Gate/MLP in late layers (17–35) need rank 32–64. Gate_proj jumps from 0.41 to 0.58 effective rank in late layers — uniform rank-16 under-fits.
+Q/K in early/mid layers (0–16) need rank 8–16 at most. Already at 23–36% effective rank, adding parameters here buys nothing. Gate/MLP in late layers (17–35) need rank 32–64. Gate_proj jumps from 0.41 to 0.58 effective rank in late layers - uniform rank-16 under-fits.
 
 Testing confirmed this: a phase-aware LoRA allocation achieved the highest out-of-distribution accuracy (80.5% vs 78.0% for uniform rank-16). Adapting only the last 11 layers (10M params) matched all-layer LoRA (33M params) on both benchmarks.
 
-Stop applying the same LoRA rank to every layer. Spend your parameter budget where the model has capacity to use it — late-layer MLP matrices. And if you're fine-tuning a model that's already competent at your target task, drop the learning rate to 5e-6 (instead of the default 2e-4) before concluding LoRA doesn't help.
+Stop applying the same LoRA rank to every layer. Spend your parameter budget where the model has capacity to use it - late-layer MLP matrices. And if you're fine-tuning a model that's already competent at your target task, drop the learning rate to 5e-6 (instead of the default 2e-4) before concluding LoRA doesn't help.
 
 [![Non-Uniform LoRA Guide](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig7_lora_guide.png)](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig7_lora_guide.png)
 *Figure 11. Effective rank ratio by matrix type, split by depth region. Gate projection shows the largest plateau-to-late gap, motivating depth-adaptive rank allocation.*
 
 ### 4. The bottleneck works best frozen
 
-Skipping the bottleneck layers during LoRA (adapting layers 0–14 + 25–35 only) achieved the highest in-distribution accuracy (93.0% GSM8K) while perfectly preserving out-of-distribution capability. The bottleneck functions as a frozen information channel — features packed at maximum density, no room for new LoRA directions without disrupting existing ones.
+Skipping the bottleneck layers during LoRA (adapting layers 0–14 + 25–35 only) achieved the highest in-distribution accuracy (93.0% GSM8K) while perfectly preserving out-of-distribution capability. The bottleneck functions as a frozen information channel, features packed at maximum density, no room for new LoRA directions without disrupting existing ones.
 
 For efficient fine-tuning: skip the bottleneck layers (16–24). Concentrate LoRA on the distributed processing zone (6–15) and output preparation zone (25–35).
 
-### 5. Quantize everything — except the gate and the endpoints
+### 5. Quantize everything - except the gate and the endpoints
 
-The SwiGLU gate projection is the quantization Achilles' heel — ~58x more sensitive than attention routing matrices at 3-bit. Q/K matrices are nearly immune thanks to built-in redundancy from low effective rank.
+The SwiGLU gate projection is the quantization Achilles' heel - ~58x more sensitive than attention routing matrices at 3-bit. Q/K matrices are nearly immune thanks to built-in redundancy from low effective rank.
 
 The practical recipe: 4-bit quantization is essentially lossless for single layers (< 0.1 PPL impact). The cliff appears between 3-bit and 2-bit, concentrated in the first 5 layers and gate projections. Giving the final layer one extra bit reduces quality penalty by 27%.
 
 Sophisticated mixed-precision schemes guided by spectral metrics fail catastrophically compared to simple heuristics. They confuse "low rank" with "safe to compress." Early layers have the lowest spectral rank and the highest quantization sensitivity.
 
-Use NF4 quantization (PPL within 0.1 of full precision). If you need fine control, protect early layers (0–3) and layer 35 with extra bits. Don't bother with per-matrix mixed precision — it adds complexity without benefit.
+Use NF4 quantization (PPL within 0.1 of full precision). If you need fine control, protect early layers (0–3) and layer 35 with extra bits. Don't bother with per-matrix mixed precision, it adds complexity without benefit.
 
 [![Per-Matrix Quantization Sensitivity](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig11_quant_matrix.png)](https://github.com/hivaze/dl-experiments/raw/master/blog/images/fig11_quant_matrix.png)
 *Figure 12. Left: Mean PPL impact of 3-bit quantization per matrix type. gate_proj is ~58x more sensitive than attention routing matrices. Right: gate_proj sensitivity by layer.*
@@ -242,18 +242,18 @@ Use NF4 quantization (PPL within 0.1 of full precision). If you need fine contro
 
 ## Conclusion
 
-The standard mental model — 36 identical layers, each refining a little — needs an update. What actually happens:
+The standard mental model, 36 identical layers, each refining a little - needs an update. What actually happens:
 
 1. Destroy the input embedding and expand into a working space
 2. Compress into an initial low-dimensional passage
 3. Expand and do distributed, high-dimensional processing
-4. Compress again through the bottleneck — variance collapses to 2–3 axes
+4. Compress again through the bottleneck - variance collapses to 2–3 axes
 5. Build an anisotropic cannon (norms growing superlinearly, all tokens pointing the same way)
-6. Fire backwards — actively oppose everything the previous 17 layers built, creating the separation the output head needs
+6. Fire backwards - actively oppose everything the previous 17 layers built, creating the separation the output head needs
 
 The architecture that emerges from training isn't a smooth pipeline. It's a sequence of radical geometric transformations separated by low-dimensional bottlenecks. And somewhere in the 0.3% of variance that your linear approximation misses, the model is hiding almost half of what it knows.
 
-Transformers are not 36 identical refinement steps. They're three functional modules separated by information bottlenecks, bookended by a destructive first layer and a dispersal last layer. Every practical decision — quantization, LoRA, pruning, distillation, early-exit — needs to respect this phase structure or risk corrupting the narrow channels where actual computation happens.
+Transformers are not 36 identical refinement steps. They're three functional modules separated by information bottlenecks, bookended by a destructive first layer and a dispersal last layer. Every practical decision, quantization, LoRA, pruning, distillation, early-exit, needs to respect this phase structure or risk corrupting the narrow channels where actual computation happens.
 
 ---
 
